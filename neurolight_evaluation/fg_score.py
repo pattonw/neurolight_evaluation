@@ -4,43 +4,91 @@ from sklearn.feature_extraction.image import grid_to_graph
 import sklearn
 from skimage.morphology import skeletonize as scikit_skeletonize
 
-from typing import Tuple
+from funlib.match import GraphToTreeMatcher
+
+from typing import Tuple, List
+import logging
+
+from .preprocess import add_fallback
+from .costs import get_costs
+
+logger = logging.getLogger(__file__)
 
 
 def score_foreground(
     binary_prediction: np.ndarray,
-    reference_tracings: nx.Graph,
+    reference_tracings: nx.DiGraph,
     offset: np.ndarray,
     scale: np.ndarray,
+    match_threshold: float,
+    penalty_attr: str,
+    location_attr: str,
 ) -> Tuple[float, float]:
-    raise NotImplementedError()
-    recall, precision = None, None
-    return (recall, precision)
+    predicted_tracings = skeletonize(
+        binary_prediction, offset, scale, location_attr=location_attr
+    )
+    if len(predicted_tracings.nodes) < 1:
+        return 0, 1
+    node_offset = max([node_id for node_id in predicted_tracings.nodes()])
+
+    g = add_fallback(
+        predicted_tracings,
+        reference_tracings,
+        node_offset,
+        match_threshold,
+        penalty_attr,
+        location_attr,
+    )
+    node_costs, edge_costs = get_costs(
+        g, reference_tracings, location_attr, penalty_attr, match_threshold
+    )
+    edge_costs = [((a, b), (c, d), e) for a, b, c, d, e in edge_costs]
+
+    matcher = GraphToTreeMatcher(
+        g, reference_tracings, node_costs, edge_costs, use_gurobi=False
+    )
+    node_matchings, edge_matchings, _ = matcher.match()
+
+    return calculate_recall_precision(node_matchings, edge_matchings)
+
+
+def calculate_recall_precision(
+    node_matchings: List[Tuple], edge_matchings: List[Tuple]
+):
+
+    return 1, 1
 
 
 def skeletonize(
-    binary_prediciton: np.ndarray, offset: np.ndarray, scale: np.ndarray
+    binary_prediction: np.ndarray,
+    offset: np.ndarray,
+    scale: np.ndarray,
+    location_attr: str = "location",
 ) -> nx.Graph:
-    skeletonized_pred = scikit_skeletonize(binary_prediciton)
+    skeletonized_pred = scikit_skeletonize(binary_prediction) == 255
     # graph with nodes having voxel coordinates
-    skeleton_graph = grid_to_nx_graph(skeleton=skeletonized_pred)
+    skeleton_graph = grid_to_nx_graph(
+        skeleton=skeletonized_pred, location_attr=location_attr
+    )
     # scaled into world units
-    skeleton_graph = scale_skeleton(skeleton=skeleton_graph, offset=offset, scale=scale)
+    skeleton_graph = scale_skeleton(
+        skeleton=skeleton_graph, offset=offset, scale=scale, location_attr=location_attr
+    )
     return skeleton_graph
 
 
 def scale_skeleton(
-    skeleton: nx.Graph, offset: np.ndarray, scale: np.ndarray
+    skeleton: nx.Graph, offset: np.ndarray, scale: np.ndarray, location_attr: str
 ) -> nx.Graph:
-    for n, data in skeleton.nodes():
-        voxel_loc = data["location"]
+    for n, data in skeleton.nodes.items():
+        voxel_loc = data[location_attr]
         space_loc = np.multiply(voxel_loc, scale) + offset
-        data["location"] = space_loc
+        data[location_attr] = space_loc
 
     return skeleton
 
 
-def grid_to_nx_graph(skeleton: np.ndarray) -> nx.Graph:
+def grid_to_nx_graph(skeleton: np.ndarray, location_attr: str) -> nx.Graph:
     # Override with local function
     sklearn.feature_extraction.image._make_edges_3d = _make_edges_3d
 
@@ -50,18 +98,18 @@ def grid_to_nx_graph(skeleton: np.ndarray) -> nx.Graph:
     # Identify order of the voxels
     voxel_locs = compute_voxel_locs(mask=skeleton)
 
-    G = nx.Graph()
+    g = nx.Graph()
 
     nodes = [
-        (node_id, {"location": voxel_loc})
+        (node_id, {location_attr: voxel_loc})
         for node_id, voxel_loc in enumerate(voxel_locs)
     ]
-    G.add_nodes_from(nodes)
+    g.add_nodes_from(nodes)
 
     edges = [(a, b) for a, b in zip(adj_mat.row, adj_mat.col)]
-    G.add_edges_from(edges)
+    g.add_edges_from(edges)
 
-    return G
+    return g
 
 
 # From https://github.com/neurodata/scikit-learn/blob/tom/grid_to_graph_26/sklearn/feature_extraction/image.py
@@ -153,7 +201,6 @@ def _make_edges_3d(n_x: int, n_y: int, n_z: int, connectivity=26):
 
 
 def compute_voxel_locs(mask: np.ndarray) -> np.ndarray:
-
     locs = np.where(mask == 1)
     locs = np.stack(locs, axis=1)
     return locs

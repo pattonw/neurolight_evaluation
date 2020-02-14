@@ -2,3 +2,7 @@ noise
 numpy
 networkx
 scikit-image
+sklearn
+rtree
+
+git+https://github.com/funkelab/funlib.match
