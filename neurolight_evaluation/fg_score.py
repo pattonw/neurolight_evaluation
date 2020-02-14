@@ -23,14 +23,21 @@ def skeletonize(
     skeletonized_pred = skimage.morphology.skeletonize(binary_prediciton)
     s = skeletonized_pred.shape
     # graph with nodes having voxel coordinates
-    skeleton = grid_to_graph(skeleton=skeletonized_pred)
+    skeleton_graph = grid_to_graph(skeleton=skeletonized_pred)
     # scaled into world units
-    skeleton = scale_skeleton(skeleton, offset, scale)
+    skeleton_graph = scale_skeleton(skeleton=skeleton_graph, offset=offset, scale=scale)
     return skeleton
 
 
-def scale_skeleton():
-    raise NotImplementedError()
+def scale_skeleton(
+    skeleton: nx.Graph, offset: np.ndarray, scale: np.ndarray
+    ) -> nx.Graph:
+    for n, data in skeleton.nodes():
+        voxel_loc = data['location']
+        space_loc = np.multiply(voxel_loc, scale) + offset
+         data['location'] = space_loc
+
+    return skeleton       
 
 
 def grid_to_graph(
