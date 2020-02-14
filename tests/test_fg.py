@@ -19,7 +19,7 @@ def test_simple_match():
         binary_prediction=pred, reference_tracings=ref,
         offset=offset, scale=scale)
 
-def test_simple_match():
+def test_simple_wrong():
     offset = np.array([0,0,0])
     scale = np.array([1,1,1])
 
