@@ -1,7 +1,7 @@
 import numpy as np
 import networkx as nx
 from sklearn.feature_extraction.image import grid_to_graph
-from skimage.morphology import skeletonize
+from skimage.morphology import skeletonize as scikit_skeletonize
 
 from typing import Tuple
 
@@ -20,7 +20,7 @@ def score_foreground(
 def skeletonize(
     binary_prediciton: np.ndarray, offset: np.ndarray, scale: np.ndarray
 ) -> nx.Graph:
-    skeletonized_pred = skeletonize(binary_prediciton)
+    skeletonized_pred = scikit_skeletonize(binary_prediciton)
     s = skeletonized_pred.shape
     # graph with nodes having voxel coordinates
     skeleton_graph = grid_to_graph(skeleton=skeletonized_pred)
