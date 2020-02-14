@@ -29,7 +29,7 @@ def score_foreground(
     )
     if len(predicted_tracings.nodes) < 1:
         return 0, 1
-    node_offset = max([node_id for node_id in predicted_tracings.nodes()])
+    node_offset = max([node_id for node_id in predicted_tracings.nodes()]) + 1
 
     g = add_fallback(
         predicted_tracings,
