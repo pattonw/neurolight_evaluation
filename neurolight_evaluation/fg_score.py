@@ -35,7 +35,7 @@ def scale_skeleton(
     for n, data in skeleton.nodes():
         voxel_loc = data['location']
         space_loc = np.multiply(voxel_loc, scale) + offset
-         data['location'] = space_loc
+        data['location'] = space_loc
 
     return skeleton       
 
@@ -136,5 +136,4 @@ def compute_voxel_locs(
     
     locs = np.where(mask == 1)
     locs = np.stack(locs, axis=1)
-    locs = np.split(locs, locs.shape[0], axis=0)
     return locs
