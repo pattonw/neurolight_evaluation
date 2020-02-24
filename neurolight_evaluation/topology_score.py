@@ -1,8 +1,5 @@
 import numpy as np
 import networkx as nx
-from sklearn.feature_extraction.image import grid_to_graph
-import sklearn
-from skimage.morphology import skeletonize as scikit_skeletonize
 
 from funlib.match import GraphToTreeMatcher
 
@@ -67,7 +64,12 @@ def score_tracings(
     logger.info(f"Final Edge matchings: {edge_matchings}")
 
     return calculate_recall_precision(
-        node_matchings, edge_matchings, g, node_offset, location_attr
+        node_matchings,
+        edge_matchings,
+        g,
+        reference_tracings,
+        node_offset,
+        location_attr,
     )
 
 
@@ -75,6 +77,7 @@ def calculate_recall_precision(
     node_matchings: List[Tuple],
     edge_matchings: List[Tuple],
     pred_graph: nx.Graph,
+    ref_graph: nx.Graph,
     offset: int,
     location_attr: str,
 ) -> Tuple[float, float]:
@@ -86,39 +89,34 @@ def calculate_recall_precision(
 
     matched_ref = {}
 
+    # Edge matchings contains a match for every edge in Pred, not Ref
     for edge_matching in edge_matchings:
-        if edge_matching[1] is None:
-            continue
-        entry = matched_ref.setdefault(edge_matching[1], [])
+        pred_edge = edge_matching[0]
+        ref_edge = edge_matching[1]
 
-        edge_pred = edge_matching[0]
-        a_pred = pred_graph.nodes[edge_pred[0]][location_attr]
-        b_pred = pred_graph.nodes[edge_pred[1]][location_attr]
+        a_pred = pred_graph.nodes[pred_edge[0]][location_attr]
+        b_pred = pred_graph.nodes[pred_edge[1]][location_attr]
 
-        edge_ref = edge_matching[1]
-        a_ref = pred_graph.nodes[edge_ref[0] + offset][location_attr]
-        b_ref = pred_graph.nodes[edge_ref[1] + offset][location_attr]
+        total_pred += np.linalg.norm(a_pred - b_pred)
 
-        if (edge_pred[0] >= offset) or (edge_pred[1] >= offset):
-            entry.append(edge_matching[0])
-        else:
-            true_pred += np.linalg.norm((b_pred - a_pred))
+        if ref_edge is not None:
+            true_pred += np.linalg.norm(a_pred - b_pred)
 
-    for u, v in pred_graph.edges:
-        u_loc = pred_graph.nodes[u][location_attr]
-        v_loc = pred_graph.nodes[v][location_attr]
-        if u < offset and v < offset:
-            total_pred += np.linalg.norm((u_loc - v_loc))
+        reference_matchings = matched_ref.setdefault(ref_edge, [])
+        reference_matchings.append(pred_edge)
 
-        elif u >= offset and v >= offset:
-            total_ref += np.linalg.norm((u_loc - v_loc))
+    for ref_edge in ref_graph.edges():
+        pred_edges = matched_ref.get(ref_edge, [])
+        failed = len(pred_edge) == 0 or any(
+            [a >= offset or b >= offset for a, b in pred_edges]
+        )
 
-    true_ref = total_ref
-    for edge, failed_matchings in matched_ref.items():
-        if len(failed_matchings) > 0:
-            a_ref = pred_graph.nodes[edge[0] + offset][location_attr]
-            b_ref = pred_graph.nodes[edge[1] + offset][location_attr]
-            true_ref -= np.linalg.norm((b_ref - a_ref))
+        a_ref = ref_graph.nodes[ref_edge[0]][location_attr]
+        b_ref = ref_graph.nodes[ref_edge[1]][location_attr]
+        dist = np.linalg.norm(a_ref - b_ref)
+        total_ref += dist
+        if not failed:
+            true_ref += dist
 
     recall = true_ref / (total_ref)
     precision = true_pred / (total_pred)
