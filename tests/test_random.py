@@ -1,6 +1,7 @@
 import numpy as np
 import networkx as nx
 import noise
+import pytest
 
 from itertools import product
 from neurolight_evaluation import score_foreground
@@ -8,15 +9,16 @@ from neurolight_evaluation import score_foreground
 from neurolight_evaluation.fg_score import skeletonize
 
 import logging
+import random
 
 logger = logging.getLogger(__file__)
 
 
 def test_fg_scores():
     logger.info("Starting randomized fg test!")
-    shape = [10, 10, 10]
+    shape = [20, 20, 20]
     freq = 16
-    num_checks = 5
+    frac = 0.3
     offset, scale = np.array([0, 0, 0]), np.array([1, 1, 1])
 
     fg_pred = np.ndarray(shape)
@@ -30,24 +32,23 @@ def test_fg_scores():
     gt_tracings = skeletonize(gt_bin_mask, offset, scale)
     gt_tracings = make_directional(gt_tracings, "location")
 
-    predictions = {}
-    for threshold in np.linspace(0, 1, num_checks):
-        pred_bin_mask = fg_pred > threshold
-        predictions[threshold] = pred_bin_mask
+    recall, precision = score_foreground(
+        gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
+    )
+    assert recall == 1
+    assert precision == 1
 
-    for threshold, prediction in predictions.items():
-        recall, precision = score_foreground(
-            prediction, gt_tracings, offset, scale, 2, "penalty", "location"
-        )
-        if threshold == 0.5:
-            assert recall == 1
-            assert precision == 1
-        elif threshold < 0.5:
-            assert recall < 1
-            assert precision == 1
-        elif threshold > 0.5:
-            assert recall == 1
-            assert precision < 1
+    num_edges = len(gt_tracings.edges())
+    to_remove = int(np.ceil(num_edges * frac))
+
+    for edge in random.choices(list(gt_tracings.edges()), k=to_remove):
+        gt_tracings.remove_edge(*edge)
+
+    recall, precision = score_foreground(
+        gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
+    )
+    assert recall == 1
+    assert precision < 1
 
 
 def make_directional(graph: nx.Graph(), location_attr: str):
