@@ -44,17 +44,26 @@ def score_foreground(
     )
     edge_costs = [((a, b), (c, d), e) for a, b, c, d, e in edge_costs]
 
+    logger.info(f"Edge costs going into matching: {edge_costs}")
+
     matcher = GraphToTreeMatcher(
         g, reference_tracings, node_costs, edge_costs, use_gurobi=False
     )
     node_matchings, edge_matchings, _ = matcher.match()
 
-    return calculate_recall_precision(node_matchings, edge_matchings)
+    logger.info(f"Final Edge matchings: {edge_matchings}")
+
+    return calculate_recall_precision(
+        node_matchings, edge_matchings, g, node_offset, location_attr
+    )
 
 
 def calculate_recall_precision(
-    node_matchings: List[Tuple], edge_matchings: List[Tuple],
-    pred_graph: nx.Graph, offset: int
+    node_matchings: List[Tuple],
+    edge_matchings: List[Tuple],
+    pred_graph: nx.Graph,
+    offset: int,
+    location_attr: str,
 ) -> Tuple[float, float]:
 
     true_pred = 0
@@ -64,8 +73,9 @@ def calculate_recall_precision(
 
     matched_ref = {}
 
-
     for edge_matching in edge_matchings:
+        if edge_matching[1] is None:
+            continue
         entry = matched_ref.setdefault(edge_matching[1], [])
 
         edge_pred = edge_matching[0]
@@ -73,32 +83,32 @@ def calculate_recall_precision(
         b_pred = pred_graph.nodes[edge_pred[1]][location_attr]
 
         edge_ref = edge_matching[1]
-        a_ref = pred_graph.nodes[edge_ref[0]][location_attr]
-        b_ref = pred_graph.nodes[edge_ref[1]][location_attr]
+        a_ref = pred_graph.nodes[edge_ref[0] + offset][location_attr]
+        b_ref = pred_graph.nodes[edge_ref[1] + offset][location_attr]
 
         if (edge_pred[0] >= offset) or (edge_pred[1] >= offset):
             entry.append(edge_matching[0])
         else:
-            true_pred += np.linalg.norm((b_pred-a_pred))
+            true_pred += np.linalg.norm((b_pred - a_pred))
 
-    for u,v in pred_graph.edges:
+    for u, v in pred_graph.edges:
         u_loc = pred_graph.nodes[u][location_attr]
         v_loc = pred_graph.nodes[v][location_attr]
         if u < offset and v < offset:
-            total_pred += np.linalg.norm((b_pred-a_pred))
+            total_pred += np.linalg.norm((u_loc - v_loc))
 
         elif u >= offset and v >= offset:
-            total_ref += np.linalg.norm((b_pred-a_pred))
+            total_ref += np.linalg.norm((u_loc - v_loc))
 
     true_ref = total_ref
     for edge, failed_matchings in matched_ref.items():
         if len(failed_matchings) > 0:
             a_ref = pred_graph.nodes[edge[0] + offset][location_attr]
             b_ref = pred_graph.nodes[edge[1] + offset][location_attr]
-            true_ref -= np.linalg.norm((b_pred-a_pred))
+            true_ref -= np.linalg.norm((b_ref - a_ref))
 
-    recall = true_ref/(total_ref)
-    precision = true_pred/(total_pred)
+    recall = true_ref / (total_ref)
+    precision = true_pred / (total_pred)
     return recall, precision
 
 
@@ -149,7 +159,8 @@ def grid_to_nx_graph(skeleton: np.ndarray, location_attr: str) -> nx.Graph:
     ]
     g.add_nodes_from(nodes)
 
-    edges = [(a, b) for a, b in zip(adj_mat.row, adj_mat.col)]
+    edges = [(a, b) for a, b in zip(adj_mat.row, adj_mat.col) if a != b]
+    logger.info(f"Grid to graph edges: {edges}")
     g.add_edges_from(edges)
 
     return g
