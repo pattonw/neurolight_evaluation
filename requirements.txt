@@ -3,8 +3,10 @@ numpy
 networkx
 scikit-image
 sklearn
-rtree<0.9
+rtree
 gunpowder
 pylp
 
 git+https://github.com/funkelab/funlib.match
+git+https://github.com/funkelab/neurolight@253e9f874ba91f8d82c4e75a5812b86b291235b3
+git+https://github.com/funkey/gunpowder@8b4a4435e7244068c630d78c9e334c265eb3257f
