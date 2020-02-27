@@ -3,7 +3,7 @@ import networkx as nx
 
 from neurolight_evaluation.fg_score_voxel import score_foreground_voxel
 
-def test_score_foreground():
+def test_score_foreground_voxel_binary():
     gt = np.concatenate((np.ones((4, 4, 4)), np.zeros((4, 4, 4))), axis=2)
     pred = np.concatenate((np.zeros((4, 4, 2)), np.ones((4, 4, 2)), np.zeros((4, 4, 4))), axis=2)
     b_acc, tpr, tnr = score_foreground_voxel(pred, gt)
@@ -18,7 +18,7 @@ def test_score_foreground():
     assert tnr == 0
     assert b_acc == 0.5
 
-
+def test_score_foreground_voxel_ternary():
     pred = np.concatenate((np.ones((4, 4, 4)), np.zeros((4, 4, 3)), np.ones((4, 4, 1))), axis=2)
     gt = np.concatenate((-np.ones((4, 4, 2)), np.ones((4, 4, 2)), np.zeros((4, 4, 4))), axis=2)
     b_acc, tpr, tnr = score_foreground_voxel(pred, gt)
@@ -34,4 +34,4 @@ def test_score_foreground():
     assert b_acc == 1
 
     
-    
+  
