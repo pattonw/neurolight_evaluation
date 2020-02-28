@@ -26,5 +26,5 @@ def score_foreground_voxel(
         tnr = 1
 
     balanced_acc = 0.5 * (tnr + tpr)
-
+    
     return balanced_acc, tpr, tnr
