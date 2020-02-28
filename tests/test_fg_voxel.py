@@ -68,7 +68,7 @@ def test_score_foreground_voxel_binary():
         assert tpr > tpr_prev
         assert tnr == tnr_prev
         assert b_acc > b_acc_prev
-        
+
         tpr_prev = tpr
         tnr_prev = tnr
         b_acc_prev = b_acc
@@ -102,6 +102,7 @@ def test_rasterize_graph():
     g = nx.Graph()
     g.add_node(0, **{location: (0, 0, 0)})
     g.add_node(1, **{location: (10, 0, 0)})
+    
 
     radius_inner = 1
     radius_outer = 2
