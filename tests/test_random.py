@@ -15,7 +15,7 @@ logger = logging.getLogger(__file__)
 
 
 def test_fg_scores():
-    logger.info("Starting randomized fg test!")
+    logger.debug("Starting randomized fg test!")
     shape = [20, 20, 20]
     freq = 16
     frac = 0.3
@@ -39,16 +39,38 @@ def test_fg_scores():
     assert precision == 1
 
     num_edges = len(gt_tracings.edges())
-    to_remove = int(np.ceil(num_edges * frac))
+    k = int(np.ceil(num_edges * frac))
+    to_remove = random.sample(list(gt_tracings.edges()), k=k)
+    to_add = []
+    while len(to_add) < len(to_remove):
+        a = random.choice(list(gt_tracings.nodes))
+        b = random.choice(list(gt_tracings.nodes))
+        if b not in gt_tracings.neighbors(a):
+            to_add.append((a, b))
 
-    for edge in random.choices(list(gt_tracings.edges()), k=to_remove):
+    current_recall = 1
+    current_precision = 1
+
+    for edge in to_remove:
         gt_tracings.remove_edge(*edge)
+        logger.info(f"removed edge {edge}")
 
-    recall, precision = score_foreground(
-        gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
-    )
-    assert recall == 1
-    assert precision < 1
+        recall, precision = score_foreground(
+            gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
+        )
+        assert recall == current_recall
+        assert precision < current_precision
+        current_recall = recall
+        current_precision = precision
+
+    for edge in to_add:
+        gt_tracings.add_edge(*edge)
+
+        recall, precision = score_foreground(
+            gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
+        )
+        assert recall < current_recall
+        assert precision == current_precision
 
 
 def make_directional(graph: nx.Graph(), location_attr: str):
@@ -72,9 +94,9 @@ def make_directional(graph: nx.Graph(), location_attr: str):
 
     if not nx.is_directed_acyclic_graph(g):
         cycle = nx.algorithms.find_cycle(g)
-        logger.info(cycle)
+        logger.debug(cycle)
         for u, v in cycle:
             u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
-            logger.info(v_loc - u_loc)
+            logger.debug(v_loc - u_loc)
 
     return g
