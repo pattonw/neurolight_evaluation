@@ -44,14 +44,14 @@ def score_foreground(
     )
     edge_costs = [((a, b), (c, d), e) for a, b, c, d, e in edge_costs]
 
-    logger.info(f"Edge costs going into matching: {edge_costs}")
+    logger.debug(f"Edge costs going into matching: {edge_costs}")
 
     matcher = GraphToTreeMatcher(
         g, reference_tracings, node_costs, edge_costs, use_gurobi=False
     )
     node_matchings, edge_matchings, _ = matcher.match()
 
-    logger.info(f"Final Edge matchings: {edge_matchings}")
+    logger.debug(f"Final Edge matchings: {edge_matchings}")
 
     return calculate_recall_precision(
         node_matchings, edge_matchings, g, node_offset, location_attr
@@ -160,7 +160,7 @@ def grid_to_nx_graph(skeleton: np.ndarray, location_attr: str) -> nx.Graph:
     g.add_nodes_from(nodes)
 
     edges = [(a, b) for a, b in zip(adj_mat.row, adj_mat.col) if a != b]
-    logger.info(f"Grid to graph edges: {edges}")
+    logger.debug(f"Grid to graph edges: {edges}")
     g.add_edges_from(edges)
 
     return g
