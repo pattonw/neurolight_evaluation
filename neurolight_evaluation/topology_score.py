@@ -36,7 +36,6 @@ def score_tracings(
                 )
                 reference_tracings.remove_node(node)
                 reference_tracings.add_edge(a, b)
-    print("adding fallback")
     g = add_fallback(
         predicted_tracings,
         reference_tracings,
@@ -45,23 +44,19 @@ def score_tracings(
         penalty_attr,
         location_attr,
     )
-    print("Got fallback, getting costs")
     node_costs, edge_costs = get_costs(
         g, reference_tracings, location_attr, penalty_attr, match_threshold
     )
     edge_costs = [((a, b), (c, d), e) for a, b, c, d, e in edge_costs]
-    print("got costs, initializing")
 
-    logger.info(f"Edge costs going into matching: {edge_costs}")
+    logger.debug(f"Edge costs going into matching: {edge_costs}")
 
     matcher = GraphToTreeMatcher(
         g, reference_tracings, node_costs, edge_costs, use_gurobi=False
     )
-    print("Initialized, matching")
     node_matchings, edge_matchings, _ = matcher.match()
-    print("matched!")
 
-    logger.info(f"Final Edge matchings: {edge_matchings}")
+    logger.debug(f"Final Edge matchings: {edge_matchings}")
 
     return calculate_recall_precision(
         node_matchings,
