@@ -3,6 +3,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 import logging
+import itertools
 
 logger = logging.getLogger(__file__)
 
@@ -16,7 +17,7 @@ def fallback_edge_penalty():
 
 
 def crossing_edge_penalty():
-    return 1
+    return 0.5
 
 
 def add_fallback(
@@ -61,10 +62,42 @@ def add_fallback(
         graph.add_edge(u, v, **{penalty_attr: fallback_edge_penalty()})
 
     crossing_edges = fallback_kdtree.query_ball_tree(graph_kdtree, match_threshold)
+    criss_crossing_edges = []
     for f_node_index, g_node_indices in enumerate(crossing_edges):
         f_node = fallback_nodes[f_node_index] + node_offset
         for g_node_index in g_node_indices:
             g_node = graph_nodes[g_node_index]
+
+            for g_neighbor in neighbors(graph, g_node):
+                criss_crossing_edges.append(
+                    (f_node, g_neighbor, {penalty_attr: fallback_edge_penalty()})
+                )
+                criss_crossing_edges.append(
+                    (g_neighbor, f_node, {penalty_attr: fallback_edge_penalty()})
+                )
+            for f_neighbor in neighbors(graph, f_node):
+                criss_crossing_edges.append(
+                    (g_node, f_neighbor, {penalty_attr: fallback_edge_penalty()})
+                )
+                criss_crossing_edges.append(
+                    (f_neighbor, g_node, {penalty_attr: fallback_edge_penalty()})
+                )
+
+            criss_crossing_edges.append((f_node, g_node, {penalty_attr: crossing_edge_penalty()}))
+            criss_crossing_edges.append((g_node, f_node, {penalty_attr: crossing_edge_penalty()}))
+    
+    for u, v, attrs in criss_crossing_edges:
+        graph.add_edge(u, v, **attrs)
+
+    return graph
+
+
+def neighbors(g, n):
+    if isinstance(g, nx.DiGraph):
+        return itertools.chain(g.predecessors(n), g.successors(n))
+    elif isinstance(g, nx.Graph):
+        return g.neighbors(n)
+
 
 def preprocess(graph):
     """
