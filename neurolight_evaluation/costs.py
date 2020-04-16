@@ -85,7 +85,9 @@ def get_costs(
     pairs_t_pens = np.take(tree_penalties, index_pairs[:, 0], axis=0)
     pairs_g_pens = np.take(graph_penalties, index_pairs[:, 1], axis=0)
 
-    node_costs = pairs_t_pens + pairs_g_pens
+    no_match = index_pairs[:, 0] == -1
+
+    node_costs = (pairs_t_pens + pairs_g_pens) * (1 - no_match)
     node_matchings = np.stack([pairs_g, pairs_t, node_costs], axis=1)
 
     # Edge matchings
