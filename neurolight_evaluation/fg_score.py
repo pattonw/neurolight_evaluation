@@ -13,6 +13,7 @@ import copy
 from .preprocess import add_fallback, preprocess
 from .costs import get_costs
 from .common import calculate_recall_precision_matchings, make_directional
+from .graph_score import score_graph
 
 logger = logging.getLogger(__file__)
 
@@ -29,40 +30,13 @@ def score_foreground(
     predicted_tracings = skeletonize(
         binary_prediction, offset, scale, location_attr=location_attr
     )
-    if len(predicted_tracings.nodes) < 1:
-        return 0, 1
-    node_offset = max([node_id for node_id in predicted_tracings.nodes()]) + 1
-
-    fallback = preprocess(copy.deepcopy(reference_tracings))
-
-    g = add_fallback(
+    return score_graph(
         predicted_tracings,
-        fallback,
-        node_offset,
+        reference_tracings,
+        offset,
+        scale,
         match_threshold,
         penalty_attr,
-        location_attr,
-    )
-    node_costs, edge_costs = get_costs(
-        g, reference_tracings, location_attr, penalty_attr, match_threshold
-    )
-    edge_costs = [((a, b), (c, d), e) for a, b, c, d, e in edge_costs]
-
-    logger.debug(f"Edge costs going into matching: {edge_costs}")
-
-    matcher = GraphToTreeMatcher(
-        g, reference_tracings, node_costs, edge_costs, use_gurobi=False
-    )
-    node_matchings, edge_matchings, _ = matcher.match()
-
-    logger.debug(f"Final Edge matchings: {edge_matchings}")
-
-    return calculate_recall_precision_matchings(
-        node_matchings,
-        edge_matchings,
-        g,
-        reference_tracings,
-        node_offset,
         location_attr,
     )
 
