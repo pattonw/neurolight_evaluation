@@ -66,6 +66,56 @@ def add_fallback(
         for g_node_index in g_node_indices:
             g_node = graph_nodes[g_node_index]
 
-            graph.add_edge(f_node, g_node, **{penalty_attr: crossing_edge_penalty()})
+def preprocess(graph):
+    """
+    Take every branch node, b, and split it into d nodes
+    where d = degree(b). the nodes b_i create the complete
+    graph K_d, and each b_i has 1 aditional edge to a
+    neighbor of b.
+
+    This is to help aleviate the following issue: Consider
+    ground truth G:
+       d
+    a--b--c
+       e
+    and predicted graph T:
+    x--y--z
+    Then adding G as a fallback to T gives y 3 adjacent edges,
+    (xy, yz, yb), however to match to b, a node needs degree at
+    least 4. Thus we rely on the fallback, regardless of how close
+    y is. This means also that only one of the edges(xy or yz) can
+    successfully match to (ab or bc) respectively, simply due to
+    the number of edges between b and y being 1.
+    """
+
+    max_id = max([node for node in graph.nodes])
+    next_id = itertools.count(max_id + 1)
+    for node, attrs in list(graph.nodes.items()):
+        if graph.degree(node) > 2:
+            preds = graph.pred[node]
+            succs = graph.succ[node]
+
+            created_nodes = {}
+            for p, s in itertools.product(preds.keys(), succs.keys()):
+                if p != s:
+                    if (p, node) not in created_nodes:
+                        p_id = next(next_id)
+                        graph.add_node(p_id, **attrs)
+                        graph.add_edge(p, p_id)
+                        graph.add_edge(p_id, node)
+                        graph.remove_edge(p, node)
+                        created_nodes[(p, node)] = p_id
+                    else:
+                        p_id = created_nodes[(p, node)]
+                    if (s, node) not in created_nodes:
+                        s_id = next(next_id)
+                        graph.add_node(s_id, **attrs)
+                        graph.add_edge(s_id, s)
+                        graph.add_edge(node, s_id)
+                        graph.remove_edge(node, s)
+                        created_nodes[(s, node)] = s_id
+                    else:
+                        s_id = created_nodes[(s, node)]
+                    graph.add_edge(p_id, s_id)
 
     return graph

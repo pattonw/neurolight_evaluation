@@ -31,9 +31,11 @@ def score_foreground(
         return 0, 1
     node_offset = max([node_id for node_id in predicted_tracings.nodes()]) + 1
 
+    fallback = preprocess(copy.deepcopy(reference_tracings))
+
     g = add_fallback(
         predicted_tracings,
-        reference_tracings,
+        fallback,
         node_offset,
         match_threshold,
         penalty_attr,
