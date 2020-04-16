@@ -5,7 +5,8 @@ import noise
 from itertools import product
 from neurolight_evaluation import score_foreground
 
-from neurolight_evaluation.fg_score import skeletonize, make_directional
+from neurolight_evaluation.common import make_directional
+from neurolight_evaluation.fg_score import skeletonize
 
 import logging
 import random
