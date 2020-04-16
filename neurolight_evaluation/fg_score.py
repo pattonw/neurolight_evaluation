@@ -33,8 +33,6 @@ def score_foreground(
     return score_graph(
         predicted_tracings,
         reference_tracings,
-        offset,
-        scale,
         match_threshold,
         penalty_attr,
         location_attr,

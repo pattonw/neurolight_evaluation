@@ -16,8 +16,6 @@ logger = logging.getLogger(__file__)
 def score_graph(
     predicted_tracings: nx.DiGraph,
     reference_tracings: nx.DiGraph,
-    offset: np.ndarray,
-    scale: np.ndarray,
     match_threshold: float,
     penalty_attr: str,
     location_attr: str,
