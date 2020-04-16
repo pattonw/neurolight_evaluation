@@ -12,7 +12,7 @@ import copy
 
 from .preprocess import add_fallback, preprocess
 from .costs import get_costs
-from .common import calculate_recall_precision_matchings
+from .common import calculate_recall_precision_matchings, make_directional
 
 logger = logging.getLogger(__file__)
 

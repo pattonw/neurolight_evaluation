@@ -86,3 +86,32 @@ def calculate_recall_precision_matchings(
         f"total_pred: {total_pred}, matched_pred: {matched_pred}"
     )
     return recall, precision, (matched_ref, total_ref, matched_pred, total_pred)
+
+
+def make_directional(graph: nx.Graph(), location_attr: str):
+    g = graph.to_directed()
+
+    for u, v in graph.edges():
+        if u == v:
+            g.remove_edge(u, v)
+            continue
+        u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
+        slope = v_loc - u_loc
+        neg = slope < 0
+        pos = slope > 0
+        for n, p in zip(neg, pos):
+            if n != p and n:
+                g.remove_edge(u, v)
+                break
+            elif n != p and p:
+                g.remove_edge(v, u)
+                break
+
+    if not nx.is_directed_acyclic_graph(g):
+        cycle = nx.algorithms.find_cycle(g)
+        logger.debug(cycle)
+        for u, v in cycle:
+            u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
+            logger.debug(v_loc - u_loc)
+
+    return g
