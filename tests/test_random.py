@@ -88,20 +88,13 @@ def test_fg_scores():
         ref_tracings.remove_edge(*edge)
         logger.info(f"removed edge {edge}")
 
-        try:
-            (
-                recall,
-                precision,
-                (true_ref, total_ref, true_pred, total_pred),
-            ) = score_foreground(
-                gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
-            )
-        except Exception:
-            ref_tracings.add_edge(*edge)
-            pickle.dump(
-                (gt_tracings, ref_tracings, edge), open("wierd_failure.obj", "wb")
-            )
-            raise Exception("Should not be reached!")
+        (
+            recall,
+            precision,
+            (true_ref, total_ref, true_pred, total_pred),
+        ) = score_foreground(
+            gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
+        )
 
         assert np.isclose(total_ref, current_total_ref - edge_len)
         assert np.isclose(true_ref, current_true_ref - edge_len)
@@ -118,29 +111,17 @@ def test_fg_scores():
         v_loc = ref_tracings.nodes[edge[1]]["location"]
         edge_len = np.linalg.norm(u_loc - v_loc)
 
-        try:
-            (
-                recall,
-                precision,
-                (true_ref, total_ref, true_pred, total_pred),
-            ) = score_foreground(
-                gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
-            )
-        except Exception:
-            pickle.dump(
-                (gt_tracings, ref_tracings, edge), open("wierd_failure.obj", "wb")
-            )
-            raise Exception("failed during scoring after adding an edge!")
-        try:
-            assert np.isclose(total_ref, current_total_ref + edge_len)
-            assert np.isclose(true_ref, current_true_ref)
-            assert np.isclose(total_pred, current_total_pred)
-            assert np.isclose(true_pred, current_true_pred)
-        except Exception:
-            pickle.dump(
-                (gt_tracings, ref_tracings, edge), open("wierd_failure.obj", "wb")
-            )
-            raise Exception("Should not be reached!")
+        (
+            recall,
+            precision,
+            (true_ref, total_ref, true_pred, total_pred),
+        ) = score_foreground(
+            gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
+        )
+        assert np.isclose(total_ref, current_total_ref + edge_len)
+        assert np.isclose(true_ref, current_true_ref)
+        assert np.isclose(total_pred, current_total_pred)
+        assert np.isclose(true_pred, current_true_pred)
         current_total_ref = total_ref
         current_true_ref = true_ref
         current_total_pred = total_pred
