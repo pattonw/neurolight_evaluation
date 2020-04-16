@@ -4,15 +4,9 @@ from sklearn.feature_extraction.image import grid_to_graph
 import sklearn
 from skimage.morphology import skeletonize as scikit_skeletonize
 
-from funlib.match import GraphToTreeMatcher
-
 from typing import Tuple
 import logging
-import copy
 
-from .preprocess import add_fallback, preprocess
-from .costs import get_costs
-from .common import calculate_recall_precision_matchings, make_directional
 from .graph_score import score_graph
 
 logger = logging.getLogger(__file__)
