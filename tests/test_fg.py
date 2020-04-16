@@ -16,7 +16,7 @@ def test_simple_match():
     ref.add_nodes_from([(0, {"loc": a}), (1, {"loc": b})])
     ref.add_edge(0, 1)
 
-    recall, precision = score_foreground(
+    recall, precision, _ = score_foreground(
         binary_prediction=pred,
         reference_tracings=ref,
         offset=offset,
@@ -42,7 +42,7 @@ def test_simple_wrong():
     ref.add_nodes_from([(0, {"loc": a}), (1, {"loc": b})])
     ref.add_edge(0, 1)
 
-    recall, precision = score_foreground(
+    recall, precision, _ = score_foreground(
         binary_prediction=pred,
         reference_tracings=ref,
         offset=offset,

@@ -1,15 +1,16 @@
 import numpy as np
 import networkx as nx
 import noise
-import pytest
 
 from itertools import product
 from neurolight_evaluation import score_foreground
 
-from neurolight_evaluation.fg_score import skeletonize
+from neurolight_evaluation.fg_score import skeletonize, make_directional
 
 import logging
 import random
+import copy
+import pickle
 
 logger = logging.getLogger(__file__)
 
@@ -30,73 +31,124 @@ def test_fg_scores():
 
     gt_bin_mask = fg_pred > 0.5
     gt_tracings = skeletonize(gt_bin_mask, offset, scale)
-    gt_tracings = make_directional(gt_tracings, "location")
+    ref_tracings = make_directional(gt_tracings, "location")
+    logger.warning(f"pred_cable_len: {cable_len(ref_tracings, 'location')}")
 
-    recall, precision = score_foreground(
-        gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
+    recall, precision, (true_ref, total_ref, true_pred, total_pred) = score_foreground(
+        gt_bin_mask, ref_tracings, offset, scale, 2, "penalty", "location"
     )
     assert recall == 1
     assert precision == 1
 
-    num_edges = len(gt_tracings.edges())
+    num_edges = len(ref_tracings.edges())
     k = int(np.ceil(num_edges * frac))
-    to_remove = random.sample(list(gt_tracings.edges()), k=k)
+    to_remove = random.sample(list(ref_tracings.edges()), k=k)
     to_add = []
+    temp = copy.deepcopy(ref_tracings)
     while len(to_add) < len(to_remove):
-        a = random.choice(list(gt_tracings.nodes))
-        b = random.choice(list(gt_tracings.nodes))
-        if b not in gt_tracings.neighbors(a):
-            to_add.append((a, b))
+        a = random.choice(list(ref_tracings.nodes))
+        b = random.choice(list(ref_tracings.nodes))
+        # make sure line ab does not have the same slope as any neighbors of a or b
+        a_loc = ref_tracings.nodes[a]["location"]
+        b_loc = ref_tracings.nodes[b]["location"]
+        slope = (a_loc - b_loc) / np.linalg.norm(a_loc - b_loc)
+        fail = False
+        for a_neighbor in ref_tracings.neighbors(a):
+            if fail:
+                break
+            n_loc = ref_tracings.nodes[a_neighbor]["location"]
+            n_slope = (a_loc - n_loc) / np.linalg.norm(a_loc - n_loc)
+            if abs(np.dot(slope, n_slope)) < 1e-4:
+                fail = True
+        for b_neighbor in ref_tracings.neighbors(b):
+            if fail:
+                break
+            n_loc = ref_tracings.nodes[b_neighbor]["location"]
+            n_slope = (b_loc - n_loc) / np.linalg.norm(b_loc - n_loc)
+            if abs(np.dot(slope, n_slope)) < 1e-4:
+                fail = True
+        if not fail and b not in ref_tracings.neighbors(a) and a not in ref_tracings.neighbors(b):
+            temp.add_edge(a, b)
+            if nx.is_directed_acyclic_graph(temp):
+                to_add.append((a, b))
+            else:
+                temp.remove_edge(a, b)
 
-    current_recall = 1
-    current_precision = 1
+    current_total_ref = total_ref
+    current_true_ref = true_ref
+    current_total_pred = total_pred
+    current_true_pred = true_pred
 
     for edge in to_remove:
-        gt_tracings.remove_edge(*edge)
+        u_loc = ref_tracings.nodes[edge[0]]["location"]
+        v_loc = ref_tracings.nodes[edge[1]]["location"]
+        edge_len = np.linalg.norm(u_loc - v_loc)
+
+        ref_tracings.remove_edge(*edge)
         logger.info(f"removed edge {edge}")
 
-        recall, precision = score_foreground(
-            gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
-        )
-        assert recall == current_recall
-        assert precision < current_precision
-        current_recall = recall
-        current_precision = precision
+        try:
+            (
+                recall,
+                precision,
+                (true_ref, total_ref, true_pred, total_pred),
+            ) = score_foreground(
+                gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
+            )
+        except Exception:
+            ref_tracings.add_edge(*edge)
+            pickle.dump(
+                (gt_tracings, ref_tracings, edge), open("wierd_failure.obj", "wb")
+            )
+            raise Exception("Should not be reached!")
+
+        assert np.isclose(total_ref, current_total_ref - edge_len)
+        assert np.isclose(true_ref, current_true_ref - edge_len)
+        assert np.isclose(total_pred, current_total_pred)
+        assert np.isclose(true_pred, current_true_pred - edge_len)
+        current_total_ref = total_ref
+        current_true_ref = true_ref
+        current_total_pred = total_pred
+        current_true_pred = true_pred
 
     for edge in to_add:
-        gt_tracings.add_edge(*edge)
+        ref_tracings.add_edge(*edge)
+        u_loc = ref_tracings.nodes[edge[0]]["location"]
+        v_loc = ref_tracings.nodes[edge[1]]["location"]
+        edge_len = np.linalg.norm(u_loc - v_loc)
 
-        recall, precision = score_foreground(
-            gt_bin_mask, gt_tracings, offset, scale, 2, "penalty", "location"
-        )
-        assert recall < current_recall
-        assert precision == current_precision
+        try:
+            (
+                recall,
+                precision,
+                (true_ref, total_ref, true_pred, total_pred),
+            ) = score_foreground(
+                gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
+            )
+        except Exception:
+            pickle.dump(
+                (gt_tracings, ref_tracings, edge), open("wierd_failure.obj", "wb")
+            )
+            raise Exception("failed during scoring after adding an edge!")
+        try:
+            assert np.isclose(total_ref, current_total_ref + edge_len)
+            assert np.isclose(true_ref, current_true_ref)
+            assert np.isclose(total_pred, current_total_pred)
+            assert np.isclose(true_pred, current_true_pred)
+        except Exception:
+            pickle.dump(
+                (gt_tracings, ref_tracings, edge), open("wierd_failure.obj", "wb")
+            )
+            raise Exception("Should not be reached!")
+        current_total_ref = total_ref
+        current_true_ref = true_ref
+        current_total_pred = total_pred
+        current_true_pred = true_pred
 
 
-def make_directional(graph: nx.Graph(), location_attr: str):
-    g = graph.to_directed()
-
-    for u, v in graph.edges():
-        if u == v:
-            g.remove_edge(u, v)
-            continue
+def cable_len(g, location_attr):
+    total = 0
+    for u, v in g.edges():
         u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
-        slope = v_loc - u_loc
-        neg = slope < 0
-        pos = slope > 0
-        for n, p in zip(neg, pos):
-            if n != p and n:
-                g.remove_edge(u, v)
-                break
-            elif n != p and p:
-                g.remove_edge(v, u)
-                break
-
-    if not nx.is_directed_acyclic_graph(g):
-        cycle = nx.algorithms.find_cycle(g)
-        logger.debug(cycle)
-        for u, v in cycle:
-            u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
-            logger.debug(v_loc - u_loc)
-
-    return g
+        total += np.linalg.norm(u_loc - v_loc)
+    return total
