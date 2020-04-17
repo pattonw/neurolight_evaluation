@@ -2,6 +2,7 @@ import networkx as nx
 
 from typing import Tuple
 import logging
+import itertools
 
 from .graph_score import score_graph
 
@@ -32,7 +33,7 @@ def score_tracings(
     target_edge_len = 3000
 
     max_node = max([node for node in predicted_tracings])
-    node_ids = itertools.counter(max_node + 1)
+    node_ids = itertools.count(max_node + 1)
 
     for u, v in predicted_tracings.edges:
         u_loc = predicted_tracings.nodes[u][location_attr]
