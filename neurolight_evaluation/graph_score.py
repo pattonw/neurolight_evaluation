@@ -1,6 +1,6 @@
 import networkx as nx
 from funlib.match import GraphToTreeMatcher
-from funlib.match.helpers import build_matched
+from funlib.match import build_matched
 
 import logging
 import copy

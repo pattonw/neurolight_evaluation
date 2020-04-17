@@ -1,4 +1,5 @@
 import networkx as nx
+import numpy as np
 
 from typing import Tuple
 import logging
@@ -35,12 +36,12 @@ def score_tracings(
     max_node = max([node for node in predicted_tracings])
     node_ids = itertools.count(max_node + 1)
 
-    for u, v in predicted_tracings.edges:
+    for u, v in list(predicted_tracings.edges):
         u_loc = predicted_tracings.nodes[u][location_attr]
         v_loc = predicted_tracings.nodes[v][location_attr]
 
         edge_len = np.linalg.norm(u_loc - v_loc)
-        k = edge_len // target_edge_len
+        k = int(edge_len // target_edge_len)
         previous = u
         for i in range(k):
             interp_id = next(node_ids)
