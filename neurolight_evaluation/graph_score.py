@@ -1,5 +1,6 @@
 import networkx as nx
 from funlib.match import GraphToTreeMatcher
+from funlib.match.helpers import build_matched
 
 import logging
 import copy
@@ -45,6 +46,8 @@ def score_graph(
     )
     node_matchings, edge_matchings, _ = matcher.match()
 
+    matched = build_matched(g, node_matchings, edge_matchings)
+
     logger.debug(f"Final Edge matchings: {edge_matchings}")
 
     return calculate_recall_precision_matchings(
@@ -54,4 +57,4 @@ def score_graph(
         reference_tracings,
         node_offset,
         location_attr,
-    )
+    ), matched
