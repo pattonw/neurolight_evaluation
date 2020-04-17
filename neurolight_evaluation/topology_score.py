@@ -32,7 +32,7 @@ def score_tracings(
     target_edge_len = 3000
 
     max_node = max([node for node in predicted_tracings])
-    itertools.counter(max_node + 1)
+    node_ids = itertools.counter(max_node + 1)
 
     for u, v in predicted_tracings.edges:
         u_loc = predicted_tracings.nodes[u][location_attr]
@@ -40,8 +40,16 @@ def score_tracings(
 
         edge_len = np.linalg.norm(u_loc - v_loc)
         k = edge_len // target_edge_len
+        previous = u
         for i in range(k):
+            interp_id = next(node_ids)
             interpolated_loc = u_loc + ((i + 0.5) / k) * (v_loc - u_loc)
+            predicted_tracings.add_node(interp_id, location=interpolated_loc)
+            predicted_tracings.add_edge(previous, interp_id)
+            previous = interp_id
+        predicted_tracings.remove_edge(u, v)
+        predicted_tracings.add_edge(previous, v)
+
     
     return score_graph(
         predicted_tracings,
