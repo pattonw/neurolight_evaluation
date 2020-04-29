@@ -1,117 +1,115 @@
 import networkx as nx
 import numpy as np
 
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import logging
 
 logger = logging.getLogger(__file__)
 
 
-def calculate_recall_precision_matchings(
-    node_matchings: List[Tuple],
-    edge_matchings: List[Tuple],
-    pred_graph: nx.Graph,
-    ref_graph: nx.Graph,
-    offset: int,
+def recall_precision(
+    node_matchings: List[Tuple[int, int]],
+    node_x_labels: Dict[int, int],
+    node_y_labels: Dict[int, int],
+    graph_x: nx.Graph,
+    graph_y: nx.Graph,
     location_attr: str,
 ) -> Tuple[float, float]:
+    """
+    Calculate recall and precision accross two graphs.
+    
+    Recall is considered to be the percentage of the cable
+    length of graph_x that was successfully matched
 
-    ref_graph = ref_graph.to_undirected()
+    Precision is considered to be the percentage of the cable
+    length of graph_y that was successfully matched
 
-    matched_pred = 0
-    total_pred = 0
-    matched_ref = 0
-    total_ref = 0
+    An edge (a, b) is considered successfully matched if a matches
+    to c, and b matches to d, where c and d share the same label id.
+    Note that it is assumed for edge (a, b) that a and b share a
+    label since they are part of the same connected component.
 
-    reference_targets = {}
+    Note that nodes without adjacent edges will not contribute to
+    either metric.
 
-    # Edge matchings contains a match for every edge in Pred, not Ref
-    accounted_edges = set()
-    for edge_matching in edge_matchings:
-        pred_edge = edge_matching[0]
-        ref_edge = edge_matching[1]
+    Args:
 
-        a_pred = pred_graph.nodes[pred_edge[0]][location_attr]
-        b_pred = pred_graph.nodes[pred_edge[1]][location_attr]
+        node_matchings: (``list`` of ``tuple`` pairs of ``int``)
+    
+            A list of tuples containing pairs of nodes that match
 
-        is_pred_edge = pred_edge[0] < offset and pred_edge[1] < offset
+        node_x_labels: (``dict`` mapping ``int`` to ``int``)
 
-        if is_pred_edge and pred_edge not in accounted_edges:
-            # keep track of both
-            accounted_edges.add((pred_edge[1], pred_edge[0]))
-            total_pred += np.linalg.norm(a_pred - b_pred)
+            A dictionary mapping node_ids in graph_x (assumed to be integers)
+            to label ids in graph_x (also assumed to be integers)
 
-        if is_pred_edge and ref_edge is not None:
-            matched_pred += np.linalg.norm(a_pred - b_pred)
+        node_y_labels: (``dict`` mapping ``int`` to ``int``)
 
-        reference_matchings = reference_targets.setdefault(ref_edge, [])
-        reference_matchings.append(pred_edge)
+            A dictionary mapping node_ids in graph_y (assumed to be integers)
+            to label ids in graph_y (also assumed to be integers)
 
-    for ref_u, ref_v in ref_graph.edges():
+        graph_x: (``nx.Graph``)
 
-        pred_edges = reference_targets.get(
-            (ref_u, ref_v), reference_targets.get((ref_v, ref_u), [])
+            The graph_x on which to calculate recall
+
+        graph_y: (``nx.Graph``)
+
+            the graph_y on which to calculate precision
+
+        location_attr: (``str``)
+
+            An attribute that all nodes in graph_x and graph_y have that contains
+            a node's location for calculating edge lengths.
+
+    Returns:
+
+        (``tuple`` of ``int``):
+
+            recall and precision
+    """
+
+    matched_x = 0
+    total_x = 0
+    matched_y = 0
+    total_y = 0
+
+    x_node_to_y_label = {}
+    y_node_to_x_label = {}
+    for a, b in node_matchings:
+        y_label = x_node_to_y_label.setdefault(a, node_y_labels[b])
+        assert y_label == node_y_labels[b], (
+            f"node {a} in graph_x matches to multiple labels in graph_y, "
+            f"including {(y_label, node_y_labels[b])}!"
         )
-        # Calculating what percent of a failed reference edge was successfully
-        # matched gives a more robust estimation of the recall. It is possible
-        # that simply adding an edge to the ground truth can decrease your recall
-        # without this step by simply making it cheaper to shift a node match
-        # onto the fallback to save some fallback edge assignments.
-        true_pred_edge_lengths = 0
-        total_pred_edge_lengths = 0
-        for a, b in pred_edges:
-            a_loc = pred_graph.nodes[a][location_attr]
-            b_loc = pred_graph.nodes[b][location_attr]
-            d = np.linalg.norm(a_loc - b_loc)
-            if a < offset and b < offset:
-                true_pred_edge_lengths += d
-            total_pred_edge_lengths += d
-        if total_pred_edge_lengths < 1e-4:
-            proportion_true = 0
-        else:
-            proportion_true = true_pred_edge_lengths / total_pred_edge_lengths
+        x_label = y_node_to_x_label.setdefault(b, node_x_labels[a])
+        assert x_label == node_x_labels[a], (
+            f"node {b} in graph_y matches to multiple labels in graph_x, "
+            f"including {(x_label, node_x_labels[a])}!"
+        )
 
-        a_ref = ref_graph.nodes[ref_u][location_attr]
-        b_ref = ref_graph.nodes[ref_v][location_attr]
-        dist = np.linalg.norm(a_ref - b_ref)
-        total_ref += dist
-        matched_ref += proportion_true * dist
+    for a, b in graph_x.edges():
+        a_loc = graph_x.nodes[a][location_attr]
+        b_loc = graph_x.nodes[b][location_attr]
+        edge_len = np.linalg.norm(a_loc - b_loc)
+        if x_node_to_y_label[a] == x_node_to_y_label[b]:
+            matched_x += edge_len
+        total_x += edge_len
 
-        print(ref_u, ref_v, proportion_true * dist)
+    for a, b in graph_y.edges():
+        a_loc = graph_y.nodes[a][location_attr]
+        b_loc = graph_y.nodes[b][location_attr]
+        edge_len = np.linalg.norm(a_loc - b_loc)
+        if y_node_to_x_label[a] == y_node_to_x_label[b]:
+            matched_y += edge_len
+        total_y += edge_len
 
-    recall = matched_ref / (total_ref)
-    precision = matched_pred / (total_pred)
-    logger.debug(
-        f"total_ref: {total_ref}, matched_ref: {matched_ref}, "
-        f"total_pred: {total_pred}, matched_pred: {matched_pred}"
-    )
-    return recall, precision, (matched_ref, total_ref, matched_pred, total_pred)
+    if np.isclose(total_x, 0):
+        recall = 0
+    else:
+        recall = matched_x / (total_x + 1e-4)
+    if np.isclose(total_y, 0):
+        precision = 0
+    else:
+        precision = matched_y / (total_y + 1e-4)
 
-
-def make_directional(graph: nx.Graph(), location_attr: str):
-    g = graph.to_directed()
-
-    for u, v in graph.edges():
-        if u == v:
-            g.remove_edge(u, v)
-            continue
-        u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
-        slope = v_loc - u_loc
-        neg = slope < 0
-        pos = slope > 0
-        for n, p in zip(neg, pos):
-            if n != p and n:
-                g.remove_edge(u, v)
-                break
-            elif n != p and p:
-                g.remove_edge(v, u)
-                break
-
-    if not nx.is_directed_acyclic_graph(g):
-        cycle = nx.algorithms.find_cycle(g)
-        logger.debug(cycle)
-        for u, v in cycle:
-            u_loc, v_loc = g.nodes[u][location_attr], g.nodes[v][location_attr]
-            logger.debug(v_loc - u_loc)
-
-    return g
+    return recall, precision
