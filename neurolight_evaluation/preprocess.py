@@ -65,18 +65,16 @@ def add_fallback(
     criss_crossing_edges = []
     for f_node_index, g_node_indices in enumerate(crossing_edges):
         f_node = fallback_nodes[f_node_index] + node_offset
-        f_node_loc = graph.nodes[f_node][location_attr]
         g_nodes = []
-        dist = float("inf")
+        min_dist = float("inf")
         for g_node_index in g_node_indices:
             candidate = graph_nodes[g_node_index]
-            candidate_loc = graph.nodes[candidate][location_attr]
-            candidate_dist = np.linalg.norm(candidate_loc - f_node_loc)
-            if np.isclose(candidate_dist, dist):
-                g_nodes.append(candidate_dist)
-            elif candidate_dist < dist:
+            candidate_dist = dist(graph, candidate, f_node, location_attr)
+            if np.isclose(candidate_dist, min_dist):
+                g_nodes.append(candidate)
+            elif candidate_dist < min_dist:
                 g_nodes = [candidate]
-                dist = candidate_dist
+                min_dist = candidate_dist
 
         for g_node in g_nodes:
             for g_neighbor in neighbors(graph, g_node):
@@ -101,6 +99,11 @@ def add_fallback(
         graph.add_edge(u, v, **attrs)
 
     return graph
+
+def dist(graph, a, b, location_attr):
+    a_loc = graph.nodes[a][location_attr]
+    b_loc = graph.nodes[b][location_attr]
+    return np.linalg.norm(a_loc - b_loc)
 
 
 def neighbors(g, n):
