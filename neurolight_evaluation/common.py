@@ -165,11 +165,11 @@ def psudo_graph_edit_distance(
 
         graph_x: (``nx.Graph``)
 
-            The graph_x on which to calculate recall
+            The "predicted" graph
 
         graph_y: (``nx.Graph``)
 
-            the graph_y on which to calculate precision
+            The "ground_truth" graph
 
         location_attr: (``str``)
 
@@ -201,10 +201,14 @@ def psudo_graph_edit_distance(
         )
 
     false_pos_nodes = [
-        x_node for x_node, y_node in node_matchings if y_node == nomatch_node
+        x_node
+        for x_node in graph_x.nodes
+        if x_node_to_y_label.get(x_node, nomatch_node) == nomatch_node
     ]
     false_neg_nodes = [
-        y_node for x_node, y_node in node_matchings if x_node == nomatch_node
+        y_node
+        for y_node in graph_y.nodes
+        if y_node_to_x_label.get(y_node, nomatch_node) == nomatch_node
     ]
 
     false_pos_cost = len(
@@ -221,11 +225,15 @@ def psudo_graph_edit_distance(
 
     merge_cost = 0
     for u, v in graph_x.edges:
-        if x_node_to_y_label[u] != x_node_to_y_label[v]:
+        if x_node_to_y_label.get(u, nomatch_node) != x_node_to_y_label.get(
+            v, nomatch_node
+        ):
             merge_cost += 1
     split_cost = 0
     for u, v in graph_y.edges:
-        if y_node_to_x_label[u] != y_node_to_x_label[v]:
+        if y_node_to_x_label.get(u, nomatch_node) != y_node_to_x_label.get(
+            v, nomatch_node
+        ):
             split_cost += 1
 
     return false_pos_cost + false_neg_cost + merge_cost + split_cost
