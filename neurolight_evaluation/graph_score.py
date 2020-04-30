@@ -1,60 +1,55 @@
 import networkx as nx
-from funlib.match import GraphToTreeMatcher
-from funlib.match import build_matched
+
+import comatch
 
 import logging
-import copy
 
-from .preprocess import add_fallback, preprocess
-from .costs import get_costs
-from .common import calculate_recall_precision_matchings
+from .graph_matching.comatch.edges_xy import get_edges_xy
+from .graph_metrics import psudo_graph_edit_distance
 
 
 logger = logging.getLogger(__file__)
 
 
 def score_graph(
-    predicted_tracings: nx.DiGraph,
-    reference_tracings: nx.DiGraph,
+    predicted_tracings: nx.Graph,
+    reference_tracings: nx.Graph,
     match_threshold: float,
-    penalty_attr: str,
     location_attr: str,
+    node_every: float,
+    metric: str,
 ):
-    if len(predicted_tracings.nodes) < 1:
-        return 0, 1
-    node_offset = max([node_id for node_id in predicted_tracings.nodes()]) + 1
 
-    fallback = preprocess(copy.deepcopy(reference_tracings))
-
-    g = add_fallback(
-        predicted_tracings,
-        fallback,
-        node_offset,
-        match_threshold,
-        penalty_attr,
-        location_attr,
+    edges_xy = get_edges_xy(
+        predicted_tracings, reference_tracings, location_attr, match_threshold
     )
-    node_costs, edge_costs = get_costs(
-        g, reference_tracings, location_attr, penalty_attr, match_threshold
+
+    nodes_x = list(predicted_tracings.nodes)
+    nodes_y = list(reference_tracings.nodes)
+    node_labels_x = {
+        node: cc
+        for cc, cc_nodes in enumerate(nx.connected_components(predicted_tracings))
+        for node in cc_nodes
+    }
+    node_labels_y = {
+        node: cc
+        for cc, cc_nodes in enumerate(nx.connected_components(reference_tracings))
+        for node in cc_nodes
+    }
+
+    label_matches, node_matches, splits, merges, fps, fns = comatch.match_components(
+        nodes_x, nodes_y, edges_xy, node_labels_x, node_labels_y
     )
-    edge_costs = [((a, b), (c, d), e) for a, b, c, d, e in edge_costs]
 
-    logger.debug(f"Edge costs going into matching: {edge_costs}")
-
-    matcher = GraphToTreeMatcher(
-        g, reference_tracings, node_costs, edge_costs, use_gurobi=False
-    )
-    node_matchings, edge_matchings, _ = matcher.match()
-
-    matched = build_matched(g, node_matchings, edge_matchings)
-
-    logger.debug(f"Final Edge matchings: {edge_matchings}")
-
-    return calculate_recall_precision_matchings(
-        node_matchings,
-        edge_matchings,
-        g,
-        reference_tracings,
-        node_offset,
-        location_attr,
-    ), matched
+    if metric == "graph_edit":
+        return psudo_graph_edit_distance(
+            node_matches,
+            node_labels_x,
+            node_labels_y,
+            predicted_tracings,
+            reference_tracings,
+            location_attr,
+            node_every,
+        )
+    else:
+        raise NotImplementedError("Only option at the moment is 'graph_edit'")
