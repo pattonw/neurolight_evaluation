@@ -4,12 +4,12 @@ from scipy.spatial import cKDTree
 import rtree
 
 import itertools
-from typing import Tuple
+from typing import Tuple, List
 
 
 def get_edges_xy(
     x: nx.Graph, y: nx.Graph, location_attr: str, node_match_threshold: float,
-) -> Tuple[int, int]:
+) -> List[Tuple[int, int]]:
 
     # setup necessary vectors:
     x_nodes = list(x.nodes)
@@ -39,13 +39,13 @@ def get_edges_xy(
     y_kdtree = cKDTree(y_locations)
 
     # get (u, v) index pairs from y_kdtree and x_kdtree
-    close_enough = y_kdtree.query_ball_tree(x_kdtree, node_match_threshold)
-    index_pairs = np.array([(i, x) for i, y in enumerate(close_enough) for x in y])
+    close_enough = x_kdtree.query_ball_tree(y_kdtree, node_match_threshold)
+    index_pairs = np.array([(i, y) for i, y_nodes in enumerate(close_enough) for y in y_nodes])
     if len(index_pairs) < 1 or len(index_pairs.shape) < 2:
-        node_matchings = []
+        node_matchings = np.ndarray([0, 2], dtype=np.int64)
     else:
-        pairs_x = np.take(x_nodes, index_pairs[:, 1])
-        pairs_y = np.take(y_nodes, index_pairs[:, 0])
+        pairs_x = np.take(x_nodes, index_pairs[:, 0])
+        pairs_y = np.take(y_nodes, index_pairs[:, 1])
 
         node_matchings = np.stack([pairs_x, pairs_y], axis=1)
 
@@ -77,7 +77,10 @@ def get_edges_xy(
 
     possible_matchings = np.concatenate([node_matchings, edge_matchings])
 
-    return tuple((a, b) for a, b in np.unique(possible_matchings, axis=0))
+    if possible_matchings.shape[0] == 0:
+        return []
+    else:
+        return [(a, b) for a, b in np.unique(possible_matchings, axis=0)]
 
 
 def get_edge_matchings(edges, locations, query_locations, match_threshold):
@@ -86,7 +89,7 @@ def get_edge_matchings(edges, locations, query_locations, match_threshold):
         rtree, query_locations, match_threshold
     )
     if len(candidate_edge_matchings) < 1:
-        return []
+        return np.ndarray([0, 2], dtype=np.int64)
 
     candidate_es = np.take(edges, candidate_edge_matchings[:, 1], axis=0)
     candidate_e_locs = np.take(locations, candidate_es, axis=0)
