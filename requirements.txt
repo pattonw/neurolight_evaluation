@@ -6,7 +6,10 @@ sklearn
 rtree
 gunpowder
 pylp
+cython
 
-git+https://github.com/funkelab/funlib.match
-git+https://github.com/funkelab/neurolight@e1bcf19180f189bcf108c5b757215f39e95e6aeb
+# git+https://github.com/funkelab/funlib.match
+git+https://github.com/pattonw/neurolight@01f8ecca4d57c71449e8e74a86bfd38f5e76902d
 git+https://github.com/funkey/gunpowder@8b4a4435e7244068c630d78c9e334c265eb3257f
+git+https://github.com/funkey/comatch
+git+https://github.com/funkelab/funlib.evaluate
