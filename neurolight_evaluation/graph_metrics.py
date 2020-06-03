@@ -69,6 +69,7 @@ def recall_precision(
     graph_x: nx.Graph,
     graph_y: nx.Graph,
     location_attr: str,
+    details=False,
 ) -> Tuple[float, float]:
     """
     Calculate recall and precision accross two graphs.
@@ -149,7 +150,7 @@ def recall_precision(
         a_loc = graph_x.nodes[a][location_attr]
         b_loc = graph_x.nodes[b][location_attr]
         edge_len = np.linalg.norm(a_loc - b_loc)
-        if x_node_to_y_label.get(a, nomatch_node) == x_node_to_y_label(
+        if x_node_to_y_label.get(a, nomatch_node) == x_node_to_y_label.get(
             b, nomatch_node + 1
         ):
             matched_x += edge_len
@@ -166,15 +167,21 @@ def recall_precision(
         total_y += edge_len
 
     if np.isclose(total_x, 0):
-        recall = 0
+        recall = 1
     else:
-        recall = matched_x / (total_x + 1e-4)
+        recall = matched_x / total_x
     if np.isclose(total_y, 0):
         precision = 0
     else:
-        precision = matched_y / (total_y + 1e-4)
+        precision = matched_y / total_y
 
-    return recall + precision
+    if not details:
+        return (
+            recall,
+            precision,
+        )
+    else:
+        return (recall, precision, (matched_x, total_x, matched_y, total_y))
 
 
 def psudo_graph_edit_distance(
