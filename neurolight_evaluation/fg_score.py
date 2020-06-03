@@ -18,10 +18,9 @@ def score_foreground(
     offset: np.ndarray,
     scale: np.ndarray,
     match_threshold: float,
-    penalty_attr: str,
     location_attr: str,
-    node_every: float,
     metric: str,
+    **metric_kwargs,
 ) -> Tuple[float, float]:
     predicted_tracings = skeletonize(
         binary_prediction, offset, scale, location_attr=location_attr
@@ -31,8 +30,8 @@ def score_foreground(
         reference_tracings,
         match_threshold,
         location_attr,
-        node_every,
         metric,
+        **metric_kwargs,
     )
 
 
