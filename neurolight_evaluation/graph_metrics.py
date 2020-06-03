@@ -4,9 +4,62 @@ import numpy as np
 from funlib.evaluate.run_length import expected_run_length
 
 from typing import List, Tuple, Dict
+from enum import Enum
 import logging
 
 logger = logging.getLogger(__file__)
+
+
+class Metric(Enum):
+    ERL = "erl"
+    GRAPH_EDIT = "graph_edit"
+    RECALL_PRECISION = "recall_precision"
+
+
+def evaluate_matching(
+    metric: Metric,
+    node_matchings: List[Tuple[int, int]],
+    node_labels_x: Dict[int, int],
+    node_labels_y: Dict[int, int],
+    graph_x: nx.Graph,
+    graph_y: nx.Graph,
+    location_attr: str,
+    **metric_kwargs,
+):
+    if metric == Metric.ERL:
+        return erl(
+            node_matchings,
+            node_labels_x,
+            node_labels_y,
+            graph_x,
+            graph_y,
+            location_attr,
+            **metric_kwargs,
+        )
+    elif metric == Metric.GRAPH_EDIT:
+        return psudo_graph_edit_distance(
+            node_matchings,
+            node_labels_x,
+            node_labels_y,
+            graph_x,
+            graph_y,
+            location_attr,
+            **metric_kwargs,
+        )
+    elif metric == Metric.RECALL_PRECISION:
+        return recall_precision(
+            node_matchings,
+            node_labels_x,
+            node_labels_y,
+            graph_x,
+            graph_y,
+            location_attr,
+            **metric_kwargs,
+        )
+    else:
+        raise NotImplementedError(
+            f"Passed in metric: {metric} is not supported. See {Metric}"
+        )
 
 
 def recall_precision(
