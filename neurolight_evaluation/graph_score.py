@@ -5,7 +5,7 @@ import comatch
 import logging
 
 from .graph_matching.comatch.edges_xy import get_edges_xy
-from .graph_metrics import psudo_graph_edit_distance
+from .graph_metrics import evaluate_matching, Metric
 
 
 logger = logging.getLogger(__file__)
@@ -16,10 +16,10 @@ def score_graph(
     reference_tracings: nx.Graph,
     match_threshold: float,
     location_attr: str,
-    node_every: float,
-    metric: str,
+    metric: Metric,
+    **metric_kwargs,
 ):
-
+    # Match the graphs:
     edges_xy = get_edges_xy(
         predicted_tracings, reference_tracings, location_attr, match_threshold
     )
@@ -41,15 +41,14 @@ def score_graph(
         nodes_x, nodes_y, edges_xy, node_labels_x, node_labels_y
     )
 
-    if metric == "graph_edit":
-        return psudo_graph_edit_distance(
-            node_matches,
-            node_labels_x,
-            node_labels_y,
-            predicted_tracings,
-            reference_tracings,
-            location_attr,
-            node_every,
-        )
-    else:
-        raise NotImplementedError("Only option at the moment is 'graph_edit'")
+    # evaluate the matching
+    return evaluate_matching(
+        metric,
+        node_matches,
+        node_labels_x,
+        node_labels_y,
+        predicted_tracings,
+        reference_tracings,
+        location_attr,
+        **metric_kwargs,
+    )
