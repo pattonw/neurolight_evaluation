@@ -5,7 +5,6 @@ import noise
 from itertools import product
 from neurolight_evaluation import score_foreground
 
-from neurolight_evaluation.common import make_directional
 from neurolight_evaluation.fg_score import skeletonize
 
 import logging
@@ -31,8 +30,7 @@ def test_fg_scores():
     assert fg_pred.max() < 1
 
     gt_bin_mask = fg_pred > 0.5
-    gt_tracings = skeletonize(gt_bin_mask, offset, scale)
-    ref_tracings = make_directional(gt_tracings, "location")
+    ref_tracings = skeletonize(gt_bin_mask, offset, scale)
     logger.warning(f"pred_cable_len: {cable_len(ref_tracings, 'location')}")
 
     recall, precision, (true_ref, total_ref, true_pred, total_pred) = score_foreground(

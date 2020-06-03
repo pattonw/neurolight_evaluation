@@ -10,13 +10,13 @@ def test_simple_match():
 
     pred = np.stack((np.eye(10), np.zeros([10, 10])), axis=2)
 
-    ref = nx.DiGraph()
+    ref = nx.Graph()
     a = np.array([0, 0, 0])
     b = np.array([9, 9, 0])
     ref.add_nodes_from([(0, {"loc": a}), (1, {"loc": b})])
     ref.add_edge(0, 1)
 
-    recall, precision, _ = score_foreground(
+    score = score_foreground(
         binary_prediction=pred,
         reference_tracings=ref,
         offset=offset,
@@ -24,10 +24,11 @@ def test_simple_match():
         match_threshold=0.5,
         penalty_attr="penalty",
         location_attr="loc",
+        node_every=2 ** 0.5,
+        metric="graph_edit"
     )
 
-    assert recall == 1
-    assert precision == 1
+    assert score == 0
 
 
 def test_simple_wrong():
@@ -36,13 +37,13 @@ def test_simple_wrong():
 
     pred = np.stack((np.eye(10), np.zeros([10, 10])), axis=2)
 
-    ref = nx.DiGraph()
+    ref = nx.Graph()
     a = np.array([0, 9, 0])
     b = np.array([9, 0, 0])
     ref.add_nodes_from([(0, {"loc": a}), (1, {"loc": b})])
     ref.add_edge(0, 1)
 
-    recall, precision, _ = score_foreground(
+    score = score_foreground(
         binary_prediction=pred,
         reference_tracings=ref,
         offset=offset,
@@ -50,8 +51,12 @@ def test_simple_wrong():
         match_threshold=0.5,
         penalty_attr="penalty",
         location_attr="loc",
+        node_every=2 ** (0.5),
+        metric="graph_edit"
     )
 
-    assert recall == 0
-    assert precision == 0
-
+    # false pos cost: 1
+    # false neg cost: (2*(9**2))**0.5/2**0.5 => 9.0
+    # merge cost: 0
+    # split cost: 0
+    assert score == 10.0
