@@ -185,6 +185,7 @@ def psudo_graph_edit_distance(
     graph_y: nx.Graph,
     location_attr: str,
     node_spacing: float,
+    details: bool = False,
 ) -> Tuple[float, float]:
     """
     Calculate a psuedo graph edit distance.
@@ -252,15 +253,15 @@ def psudo_graph_edit_distance(
     y_node_to_x_label = {}
     for a, b in node_matchings:
         y_label = x_node_to_y_label.setdefault(a, node_labels_y[b])
-        assert y_label == node_labels_y[b], (
-            f"node {a} in graph_x matches to multiple labels in graph_y, "
-            f"including {(y_label, node_labels_y[b])}!"
-        )
+        # assert y_label == node_labels_y[b], (
+        #     f"node {a} in graph_x matches to multiple labels in graph_y, "
+        #     f"including {(y_label, node_labels_y[b])}!"
+        # )
         x_label = y_node_to_x_label.setdefault(b, node_labels_x[a])
-        assert x_label == node_labels_x[a], (
-            f"node {b} in graph_y matches to multiple labels in graph_x, "
-            f"including {(x_label, node_labels_x[a])}!"
-        )
+        # assert x_label == node_labels_x[a], (
+        #     f"node {b} in graph_y matches to multiple labels in graph_x, "
+        #     f"including {(x_label, node_labels_x[a])}!"
+        # )
 
     false_pos_nodes = [
         x_node
@@ -298,10 +299,18 @@ def psudo_graph_edit_distance(
         ):
             split_cost += 1
 
-    return false_pos_cost + false_neg_cost + merge_cost + split_cost
+    logger.info(
+        f"false_pos_cost: {false_pos_cost}, false_neg_cost: {false_neg_cost}, "
+        f"merge_cost: {merge_cost}, split_cost: {split_cost}"
+    )
+    edit_distance = false_pos_cost + false_neg_cost + merge_cost + split_cost
+    if not details:
+        return edit_distance
+    else:
+        return edit_distance, (split_cost, merge_cost, false_pos_cost, false_neg_cost)
 
 
-def expected_run_length(
+def erl(
     node_matchings: List[Tuple[int, int]],
     node_labels_x: Dict[int, int],
     node_labels_y: Dict[int, int],
