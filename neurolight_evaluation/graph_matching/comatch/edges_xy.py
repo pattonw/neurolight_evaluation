@@ -109,6 +109,12 @@ def get_edge_matchings(edges, locations, query_locations, match_threshold):
     )
     end_distances = np.linalg.norm(candidate_e_locs - candidate_query_locs, axis=2)
     end_points = np.equal(end_distances, np.min(end_distances, axis=1, keepdims=True))
+    num_end_points = end_points.sum(axis=1)
+    equal_ends = num_end_points == 2
+    end_points[equal_ends] = np.array([True, False])
+    if end_points.shape[0] == 0:
+        return np.ndarray([0, 2], dtype=np.int64)
+    assert max(end_points.sum(axis=1)) == 1, f"{max(end_points.sum(axis=1))}"
     candidate_indices = filtered_candidate_es[end_points]
     query_indices = filtered_matchings[:, 0]
 
