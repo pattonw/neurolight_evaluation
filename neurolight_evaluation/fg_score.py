@@ -14,12 +14,14 @@ logger = logging.getLogger(__file__)
 
 def score_foreground(
     binary_prediction: np.ndarray,
-    reference_tracings: nx.DiGraph,
+    reference_tracings: nx.Graph,
     offset: np.ndarray,
     scale: np.ndarray,
     match_threshold: float,
     penalty_attr: str,
     location_attr: str,
+    node_every: float,
+    metric: str,
 ) -> Tuple[float, float]:
     predicted_tracings = skeletonize(
         binary_prediction, offset, scale, location_attr=location_attr
@@ -28,8 +30,9 @@ def score_foreground(
         predicted_tracings,
         reference_tracings,
         match_threshold,
-        penalty_attr,
         location_attr,
+        node_every,
+        metric,
     )
 
 
@@ -110,11 +113,12 @@ def _make_edges_3d(n_x: int, n_y: int, n_z: int, connectivity=26):
 
     edges = []
 
+    edges_self = np.vstack((vertices.ravel(), vertices.ravel()))
     edges_deep = np.vstack((vertices[:, :, :-1].ravel(), vertices[:, :, 1:].ravel()))
     edges_right = np.vstack((vertices[:, :-1].ravel(), vertices[:, 1:].ravel()))
     edges_down = np.vstack((vertices[:-1].ravel(), vertices[1:].ravel()))
 
-    edges = [edges_deep, edges_right, edges_down]
+    edges = [edges_self, edges_deep, edges_right, edges_down]
 
     # Add the other connections
     if connectivity >= 18:
