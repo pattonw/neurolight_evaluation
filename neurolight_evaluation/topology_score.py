@@ -14,14 +14,16 @@ def score_tracings(
     predicted_tracings: nx.Graph,
     reference_tracings: nx.Graph,
     match_threshold: float,
-    penalty_attr: str,
     location_attr: str,
+    metric: str,
+    **metric_kwargs,
 ) -> Tuple[float, float]:
-    
+
     return score_graph(
         predicted_tracings,
         reference_tracings,
         match_threshold,
-        penalty_attr,
         location_attr,
+        metric,
+        **metric_kwargs
     )

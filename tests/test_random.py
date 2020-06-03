@@ -4,6 +4,7 @@ import noise
 
 from itertools import product
 from neurolight_evaluation import score_foreground
+from neurolight_evaluation.graph_metrics import Metric
 
 from neurolight_evaluation.fg_score import skeletonize
 
@@ -19,7 +20,7 @@ def test_fg_scores():
     logger.debug("Starting randomized fg test!")
     shape = [20, 20, 20]
     freq = 16
-    frac = 0.3
+    frac = 0.2
     offset, scale = np.array([0, 0, 0]), np.array([1, 1, 1])
 
     fg_pred = np.ndarray(shape)
@@ -34,17 +35,28 @@ def test_fg_scores():
     logger.warning(f"pred_cable_len: {cable_len(ref_tracings, 'location')}")
 
     recall, precision, (true_ref, total_ref, true_pred, total_pred) = score_foreground(
-        gt_bin_mask, ref_tracings, offset, scale, 2, "penalty", "location"
+        gt_bin_mask,
+        ref_tracings,
+        offset,
+        scale,
+        2,
+        "location",
+        Metric.RECALL_PRECISION,
+        details=True,
     )
-    assert recall == 1
-    assert precision == 1
+    assert recall == 1, (true_ref, total_ref, true_pred, total_pred)
+    assert precision == 1, (true_ref, total_ref, true_pred, total_pred)
 
     num_edges = len(ref_tracings.edges())
     k = int(np.ceil(num_edges * frac))
     to_remove = random.sample(list(ref_tracings.edges()), k=k)
     to_add = []
     temp = copy.deepcopy(ref_tracings)
+    k = 0
     while len(to_add) < len(to_remove):
+        k += 1
+        if k > 1000:
+            raise Exception(len(to_remove), len(to_add))
         a = random.choice(list(ref_tracings.nodes))
         b = random.choice(list(ref_tracings.nodes))
         # make sure line ab does not have the same slope as any neighbors of a or b
@@ -59,6 +71,7 @@ def test_fg_scores():
             n_slope = (a_loc - n_loc) / np.linalg.norm(a_loc - n_loc)
             if abs(np.dot(slope, n_slope)) < 1e-4:
                 fail = True
+                print(f"failed since ab share slope with ac")
         for b_neighbor in ref_tracings.neighbors(b):
             if fail:
                 break
@@ -66,12 +79,10 @@ def test_fg_scores():
             n_slope = (b_loc - n_loc) / np.linalg.norm(b_loc - n_loc)
             if abs(np.dot(slope, n_slope)) < 1e-4:
                 fail = True
-        if not fail and b not in ref_tracings.neighbors(a) and a not in ref_tracings.neighbors(b):
-            temp.add_edge(a, b)
-            if nx.is_directed_acyclic_graph(temp):
-                to_add.append((a, b))
-            else:
-                temp.remove_edge(a, b)
+                print(f"failed since ab share slope with bc")
+
+        temp.add_edge(a, b)
+        to_add.append((a, b))
 
     current_total_ref = total_ref
     current_true_ref = true_ref
@@ -91,7 +102,14 @@ def test_fg_scores():
             precision,
             (true_ref, total_ref, true_pred, total_pred),
         ) = score_foreground(
-            gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
+            gt_bin_mask,
+            ref_tracings,
+            offset,
+            scale,
+            0.05,
+            "location",
+            Metric.RECALL_PRECISION,
+            details=True,
         )
 
         assert np.isclose(total_ref, current_total_ref - edge_len)
@@ -114,7 +132,14 @@ def test_fg_scores():
             precision,
             (true_ref, total_ref, true_pred, total_pred),
         ) = score_foreground(
-            gt_bin_mask, ref_tracings, offset, scale, 0.05, "penalty", "location"
+            gt_bin_mask,
+            ref_tracings,
+            offset,
+            scale,
+            0.05,
+            "location",
+            Metric.RECALL_PRECISION,
+            details=True,
         )
         assert np.isclose(total_ref, current_total_ref + edge_len)
         assert np.isclose(true_ref, current_true_ref)

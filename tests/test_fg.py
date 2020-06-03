@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 
 from neurolight_evaluation import score_foreground
+from neurolight_evaluation.graph_metrics import Metric
 
 
 def test_simple_match():
@@ -22,10 +23,9 @@ def test_simple_match():
         offset=offset,
         scale=scale,
         match_threshold=0.5,
-        penalty_attr="penalty",
         location_attr="loc",
-        node_every=2 ** 0.5,
-        metric="graph_edit"
+        node_spacing=2 ** 0.5,
+        metric=Metric.GRAPH_EDIT,
     )
 
     assert score == 0
@@ -49,10 +49,9 @@ def test_simple_wrong():
         offset=offset,
         scale=scale,
         match_threshold=0.5,
-        penalty_attr="penalty",
         location_attr="loc",
-        node_every=2 ** (0.5),
-        metric="graph_edit"
+        node_spacing=2 ** (0.5),
+        metric=Metric.GRAPH_EDIT,
     )
 
     # false pos cost: 1
