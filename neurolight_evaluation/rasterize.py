@@ -1,6 +1,6 @@
 import gunpowder as gp
 import numpy as np
-from neurolight.gunpowder import RasterizeSkeleton, SwcFileSource
+# from neurolight.gunpowder import RasterizeSkeleton, SwcFileSource
 
 
 class NetworkxSource(SwcFileSource):
@@ -66,7 +66,8 @@ def rasterize_graph(
 
     pipeline_pos = (
         NetworkxSource(graph, graph_key) +
-        RasterizeSkeleton(graph_key, array, array_spec, radius_pos))
+        RasterizeSkeleton(graph_key, array, array_spec, radius_pos)
+        + GrowLabels(array, tolerance, tolerance_spec, radius_tolerance))
 
     request = gp.BatchRequest()
     request[array] = gp.ArraySpec(roi=roi)
