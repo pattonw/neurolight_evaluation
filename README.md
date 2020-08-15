@@ -18,10 +18,10 @@ from neurolight_evaluation.graph_metrics import Metric
 from neurolight_evaluation.graph_score import score_graph
 
 # Load in your predicted trees as nx.Graph's
-predicted_tracings = load("predictions")
+predicted_tracings = your_load_script_here("predictions")
 
 # Load in your ground truth trees as nx.Graph's
-reference_tracings = load("predictions")
+reference_tracings = your_load_script_here("references")
 
 # Matching threshold: Given two nodes A in predictions and
 # B in reference and distance d between them, the match_threshold
@@ -29,7 +29,7 @@ reference_tracings = load("predictions")
 match_threshold = 5
 
 # location_attr
-location_attr = "location
+location_attr = "location"
 
 # metric, what distance metric you want to use to compare these two trees
 # Currently supports GRAPH_EDIT, ERL (expected run length), RECALL_PRECISION
