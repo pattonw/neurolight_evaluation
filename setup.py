@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup, find_packages
 
 setup(
     name="neurolight_evaluation",
@@ -6,6 +6,6 @@ setup(
     description="Evaluation for neurolight data",
     author="William Patton, Thomas Athey",
     author_email="pattonw@hhmi.org, tathey1@jhmi.edu",
-    packages=["neurolight_evaluation"],
+    packages=find_packages(),
 )
 
