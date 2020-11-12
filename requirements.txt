@@ -5,7 +5,7 @@ scikit-image
 sklearn
 rtree
 gunpowder
-pylp
+mip
 cython
 
 # git+https://github.com/funkelab/funlib.match
@@ -13,3 +13,4 @@ git+https://github.com/pattonw/neurolight
 git+https://github.com/funkey/gunpowder
 git+https://github.com/funkey/comatch
 git+https://github.com/funkelab/funlib.evaluate
+git+https://github.com/funkelab/funlib.math 

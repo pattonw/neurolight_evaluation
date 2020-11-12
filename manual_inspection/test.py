@@ -9,12 +9,19 @@ from maximin import maximin_tree_query
 from funlib.math import cantor_number
 import networkx as nx
 
-from neurolight_evaluation.simulated_reconstruction import simulated_reconstruction
+from neurolight_evaluation.simulated_reconstruction import SimulatedTracer
+from neurolight_evaluation.conf import ReconstructionConfig
 
 from neuroglancer_graphs import add_graph
 import neuroglancer
 
+from omegaconf import OmegaConf
+
 from matplotlib import pyplot as plt
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 num_graphs = 1
 p = 0.9
@@ -70,16 +77,33 @@ for i in range(num_graphs):
     graphs.append((gt, prediction))
 
 gt, prediction = graphs[0]
+config = OmegaConf.structured(ReconstructionConfig)
 
-for cc in nx.connected_components(gt):
+reconstructions = []
+ccs = nx.connected_components(gt)
+ccs = sorted(ccs, key=lambda x: -len(x))
+for cc in ccs:
     seed_node = min(cc)
     seed_loc = gt.nodes[seed_node]["location"]
 
     component_subgraph = gt.subgraph(cc).copy()
-    reconstruction_accuracy = simulated_reconstruction(gt, prediction, seed_loc, None)
-    reconstruction_accuracy.plot()
-    plt.show()
+    print(f"number of nodes in component: {component_subgraph.number_of_nodes()}")
+    print(f"number of nodes in prediction: {prediction.number_of_nodes()}")
+    sim_tracer = SimulatedTracer(component_subgraph, prediction, seed_loc, config)
+    logging.info(f"Starting reconstruction")
+    sim_tracer.start()
+    logging.info(f"Finished reconstruction")
+    reconstructions.append(sim_tracer.reconstruction)
+    logging.info(
+        f"Number of nodes in reconstruciton: {sim_tracer.reconstruction.number_of_nodes()}"
+    )
+    sim_tracer.accuracy.plot()
+    # plt.show()
+    break
 
+reconstruction = nx.disjoint_union_all(reconstructions)
+
+logging.info(f"Number of nodes in reconstruction: {reconstruction.number_of_nodes()}")
 
 attrs = {"names": ["z", "y", "x"], "units": "nm", "scales": (1, 1, 1)}
 dimensions = neuroglancer.CoordinateSpace(**attrs)
@@ -93,6 +117,13 @@ with viewer.txn() as s:
             s,
             prediction,
             name=f"prediction_{i}",
+            visible=True,
+            graph_dimensions=dimensions,
+        )
+        add_graph(
+            s,
+            reconstruction,
+            name="reconstruction_0",
             visible=True,
             graph_dimensions=dimensions,
         )
