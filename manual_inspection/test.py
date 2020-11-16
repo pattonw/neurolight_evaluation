@@ -87,15 +87,17 @@ for cc in ccs:
     seed_loc = gt.nodes[seed_node]["location"]
 
     component_subgraph = gt.subgraph(cc).copy()
-    print(f"number of nodes in component: {component_subgraph.number_of_nodes()}")
-    print(f"number of nodes in prediction: {prediction.number_of_nodes()}")
     sim_tracer = SimulatedTracer(component_subgraph, prediction, seed_loc, config)
     logging.info(f"Starting reconstruction")
     sim_tracer.start()
     logging.info(f"Finished reconstruction")
-    reconstructions.append(sim_tracer.reconstruction)
+    reconstructions.append(
+        sim_tracer.prediction.subgraph(sim_tracer.reconstruction_nodes).copy()
+    )
+    print(f"number of nodes in component: {component_subgraph.number_of_nodes()}")
+    print(f"number of nodes in prediction: {prediction.number_of_nodes()}")
     logging.info(
-        f"Number of nodes in reconstruciton: {sim_tracer.reconstruction.number_of_nodes()}"
+        f"Number of nodes in reconstruciton: {reconstructions[-1].number_of_nodes()}"
     )
     sim_tracer.accuracy.plot()
     # plt.show()
