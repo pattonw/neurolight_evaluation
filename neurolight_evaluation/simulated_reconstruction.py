@@ -49,6 +49,10 @@ class SimulatedTracer:
 
         self.accuracy = Accuracy()
 
+        self.steps = 0
+
+        self.fixed_nodes = set()
+
     def next_node_id(self):
         self._next_node_id += 1
         return self._next_node_id
@@ -162,9 +166,27 @@ class SimulatedTracer:
         while not self.done():
             self.step()
 
+        for node in self.reconstruction_nodes:
+            assert node in self.fixed_nodes
+            matches = self.pred_matchings[node]
+            _, match_area = self.surface_area(self.gt, matches)
+            assert len(list(nx.connected_components(self.gt.subgraph(matches)))) == 1, f"Node {node} is not done"
+            gt_matches = set().union(*[self.gt_matchings[gt_node] for gt_node in matches])
+            gt_surface_matches = set().union(*[self.gt_matchings[gt_node] for gt_node in match_area])
+            num_ccs = len(list(nx.connected_components(self.prediction.subgraph(gt_matches))))
+            num_surface_ccs = len(list(nx.connected_components(self.prediction.subgraph(gt_surface_matches))))
+            if num_ccs != 1:
+                logger.info(f"gt_nodes {gt_matches}, matched to {node} failed and matched to {num_ccs} ccs and {num_surface_ccs} surface_ccs")
+                if num_surface_ccs != 1:
+                    heappush(self.visit_queue, (0, node))
+                    self.step()
+                    raise Exception("Done!")
+
+
     def step(self):
         confidence, pred_visit = self.next_node()
         logger.info(f"Visiting {pred_visit}")
+        logger.info(f"current reconstruction nodes: {self.reconstruction_nodes}")
 
         # A single pred node can match to multiple gt nodes
         gt_visits = self.pred_matchings[pred_visit]
@@ -178,7 +200,13 @@ class SimulatedTracer:
         else:
             changed = self.fix_connectivity(pred_visit, gt_visits)
             if changed:
+                logger.info(f"pred_visit was changed, check it again:")
                 heappush(self.visit_queue, (0, pred_visit))
+            elif changed is None:
+                logger.info(f"Nothing wrong with {pred_visit}")
+                self.fixed_nodes.add(pred_visit)
+            else:
+                logger.info(f"{pred_visit} was removed")
 
     def surface_area(self, graph: nx.Graph, inside: Set[int]):
         outside = nx.algorithms.boundary.node_boundary(graph, inside)
@@ -204,70 +232,43 @@ class SimulatedTracer:
         # all nodes in gt that neighbor a node in `gt_visits`
         gt_visit_surface, gt_visit_area = self.surface_area(self.gt, gt_visits)
 
-        # nodes A, and B, are diagonal if a neighbor of A matches to B
-        # note that this is not comutative
-        pred_diagonals = {n: self.pred_matchings[n] for n in pred_visit_surface}
+        pred_visit_area = self.prediction.subgraph(pred_visit_area)
+        gt_visit_area = self.gt.subgraph(gt_visit_area)
 
-        gt_diagonals = {n: self.gt_matchings[n] for n in gt_visit_surface}
-
-        # pred_area_match should be a single connected component in gt. If not, something is wrong
-        pred_area_match = set().union(
-            *[self.pred_matchings[n] for n in pred_visit_area]
-        )
-        pred_area_match = self.gt.subgraph(pred_area_match)
-        # gt_area_match should be a single connected component in pred, If not something is wrong
-        gt_area_match = set().union(*[self.gt_matchings[n] for n in gt_visit_area])
-        gt_area_match = self.prediction.subgraph(gt_area_match)
-        # cases for diagonals:
-
-        # If a member of `pred_visit_surface` has no matches, it is a false pos and
-        # the edge is not needed.
-        # If a member of `pred_visit_surface` has matches that are on a different connected
-        # components of the gt subgraph containing pred_area_match than visit, then these
-        # two nodes are connected locally in the prediction, but not locally in the gt
-        # and must be split
-
-        pred_visit_cc = nx.node_connected_component(pred_area_match, list(gt_visits)[0])
-        assert all([n in pred_visit_cc for n in gt_visits])
-
-        for pred_neighbor, gt_matchings in pred_diagonals.items():
-            if len(gt_matchings) == 0:
-                self.remove_false_pos_edge(pred_visit, pred_neighbor)
+        for u, v in pred_visit_area.edges():
+            if not (u == pred_visit or v == pred_visit):
+                continue
+            u_gt = self.pred_matchings[u]
+            v_gt = self.pred_matchings[v]
+            gt_cc = self.gt.subgraph(u_gt | v_gt)
+            gt_ccs = list(nx.connected_components(gt_cc))
+            if len(u_gt) == 0:
+                self.remove_false_merge_edge(u, v)
                 return True
-            elif all([n not in pred_visit_cc for n in gt_matchings]):
-                self.remove_false_merge_edge(pred_visit, pred_neighbor)
+            elif len(v_gt) == 0:
+                self.remove_false_merge_edge(u, v)
                 return True
-            elif any([n not in pred_visit_cc for n in gt_matchings]):
-                # ambiguous case: consider
-                # prediction:    a --- b
-                # matching:      |    / \
-                # gt:            A----B C
-                # Splitting and merging both make sense leading to an infinite loop.
-                # in this case, first fix b, then come back and fix a.
-                raise Exception(
-                    "This case should be fixed via preprocessing. "
-                    "No node in prediction is allowed to match to multiple nodes in gt."
-                )
-
-        # If a member of `gt_visit_surface` has no matches, it is a false neg and
-        # should be reconstructed
-        # If a member of `gt_visit_surface` has matches that are on a different connected
-        # component of the pred subgraph containing gt_area_match than gt_visit, is locally
-        # connected to a node in gt, that is not locally connected in pred and must be merged.
-
-        gt_visit_cc = nx.node_connected_component(gt_area_match, pred_visit)
-
-        for gt_neighbor, pred_matchings in gt_diagonals.items():
-            if len(pred_matchings) == 0:
-                self.reconstruct_false_neg(pred_visit, gt_neighbor)
+            elif len(gt_ccs) == 2:
+                self.remove_false_merge_edge(u, v)
                 return True
-            else:
-                for pred_match in pred_matchings:
-                    if pred_match not in gt_visit_cc:
-                        self.merge_false_split(pred_visit, pred_match)
-                        return True
+            elif len(gt_ccs) > 2:
+                raise NotImplementedError("This should be unreachable!")
 
-        return False
+        for g_u, g_v in gt_visit_area.edges():
+            assert g_u in gt_visits or g_v in gt_visits
+            u_pred = self.gt_matchings[g_u]
+            v_pred = self.gt_matchings[g_v]
+            pred_cc = self.prediction.subgraph(u_pred | v_pred)
+            pred_ccs = list(nx.connected_components(pred_cc))
+            if len(u_pred) == 0:
+                self.reconstruct_false_neg(pred_visit, g_u)
+                return True
+            elif len(v_pred) == 0:
+                self.reconstruct_false_neg(pred_visit, g_v)
+                return True
+            elif len(pred_ccs) > 1:
+                self.merge_false_split(g_u, g_v)
+                return True
 
     def done(self):
         logger.info(f"{len(self.visit_queue)} nodes left!")
@@ -303,11 +304,8 @@ class SimulatedTracer:
         for gt_match in self.pred_matchings[node]:
             self.gt_matchings[gt_match].remove(node)
         del self.pred_matchings[node]
-        self.purge_unneeded_components()
-        # logger.warning("Update accuracy. Should increase precision")
-
-    def purge_unneeded_components(self):
         self.rebuild_queue()
+        # logger.warning("Update accuracy. Should increase precision")
 
     def rebuild_queue(self):
         new_queue = []
@@ -319,19 +317,19 @@ class SimulatedTracer:
             else:
                 num_purged += 1
 
-        logger.warning(f"purged {num_purged} nodes from queue")
+        logger.warning(f"purged {num_purged} nodes from queue, queue now has {len(new_queue)} entries!")
         self.visit_queue = new_queue
 
     def remove_false_pos_edge(self, node, neighbor):
         logger.info(f"Removing false positive edge {(node, neighbor)}")
         self.prediction.remove_edge(node, neighbor)
-        self.purge_unneeded_components()
+        self.rebuild_queue()
         # logger.warning("Update accuracy. Should increase precision")
 
     def remove_false_merge_edge(self, node, neighbor):
         logger.info(f"Removing false merge edge {(node, neighbor)}")
         self.prediction.remove_edge(node, neighbor)
-        self.purge_unneeded_components()
+        self.rebuild_queue()
         # logger.warning(
         #     "Update accuracy. Should increase precision and reduce merge errors"
         # )
@@ -352,6 +350,7 @@ class SimulatedTracer:
             self.prediction.add_node(
                 new_node_id, **{self.config.comatch.location_attr: new_loc}
             )
+            self.fixed_nodes.add(new_node_id)
             self.gt_matchings[gt_neighbor].add(new_node_id)
             self.pred_matchings[new_node_id].add(gt_neighbor)
             self.prediction.add_edge(new_node_id, last_node_id)
@@ -371,18 +370,47 @@ class SimulatedTracer:
         # logger.warning("Update accuracy. Either stays same or increases accuracy")
         heappush(self.visit_queue, (random.random(), new_node_id))
 
-    def merge_false_split(self, contained, not_contained):
-        logger.info(f"Merging false split {(contained, not_contained)}")
-        cc = nx.node_connected_component(self.prediction, not_contained)
+    def merge_false_split(self, g_u, g_v):
+        logger.info(f"merging false split between {g_u} and {g_v}")
+        matched_nodes = self.gt_matchings[g_u] | self.gt_matchings[g_v]
+        local_predictions = self.prediction.subgraph(matched_nodes)
+        pred_ccs = list(nx.connected_components(local_predictions))
 
-        num_added = 0
-        if contained not in cc:
-            for node in cc:
-                num_added += 1
-                heappush(self.visit_queue, (random.random(), node))
+        # Greedy inefficient approach:
+        edges = [
+            (
+                a,
+                b,
+                np.linalg.norm(
+                    self.prediction.nodes[a][self.config.comatch.location_attr]
+                    - self.prediction.nodes[b][self.config.comatch.location_attr]
+                ),
+            )
+            for a, b in itertools.chain(
+                *[
+                    itertools.product(x, y)
+                    for x, y in itertools.combinations(pred_ccs, 2)
+                ]
+            )
+        ]
+        edges = sorted(edges, key=lambda x: x[2])
+        
+        while len(pred_ccs) > 1:
+            reconstruction_nodes = self.reconstruction_nodes
+            u, v, _ = edges[0]
+            edges = edges[1:]
+            if v not in nx.node_connected_component(local_predictions, u):
+                if u not in reconstruction_nodes and v in reconstruction_nodes:
+                    for node in nx.node_connected_component(self.prediction, u):
+                        heappush(self.visit_queue, (random.random(), node))
+                if v not in reconstruction_nodes and u in reconstruction_nodes:
+                    for node in nx.node_connected_component(self.prediction, v):
+                        heappush(self.visit_queue, (random.random(), node))
+                self.prediction.add_edge(u, v)
+            local_predictions = self.prediction.subgraph(matched_nodes)
+            pred_ccs = list(nx.connected_components(local_predictions))
 
-        logger.info(f"Added {num_added} new nodes to the visit queue")
-        self.prediction.add_edge(contained, not_contained)
+        assert len(list(nx.connected_components(self.prediction.subgraph(matched_nodes)))) == 1
 
 
 """
