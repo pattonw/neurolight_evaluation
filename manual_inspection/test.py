@@ -9,6 +9,8 @@ from maximin import maximin_tree_query
 from funlib.math import cantor_number
 import networkx as nx
 
+from neurolight_evaluation.graph_score import score_graph
+from neurolight_evaluation.graph_metrics import Metric
 from neurolight_evaluation.simulated_reconstruction import SimulatedTracer
 from neurolight_evaluation.conf import ReconstructionConfig
 
@@ -23,38 +25,38 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-num_graphs = 1
-p = 0.9
+random_seed = 0
+ps = [0.9, 0.7, 0.5, 0.3, 0.1]
 voxel_size = (4, 4, 4)
 volume_size = (128, 128, 128)
 dims = len(voxel_size)
 
 graphs = []
 
-for i in range(num_graphs):
-    np.random.seed(i)
+np.random.seed(random_seed)
 
-    noisy_vol = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
-    neighborhood = generate_binary_structure(dims, dims)
-    peaks = maximum_filter(noisy_vol, footprint=neighborhood) == noisy_vol
+noisy_vol = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
+neighborhood = generate_binary_structure(dims, dims)
+peaks = maximum_filter(noisy_vol, footprint=neighborhood) == noisy_vol
 
-    edge_scores = maximin_tree_query(
-        noisy_vol, peaks.astype(np.uint8), decimate=False, threshold=0.4
-    )
+edge_scores = maximin_tree_query(
+    noisy_vol, peaks.astype(np.uint8), decimate=False, threshold=0.4
+)
 
-    gt = nx.Graph()
-    for u, v, score in edge_scores:
-        u_id = cantor_number(u)
-        u_loc = u * np.array(voxel_size) + np.array(voxel_size) / 2
-        v_id = cantor_number(v)
-        v_loc = v * np.array(voxel_size) + np.array(voxel_size) / 2
+gt = nx.Graph()
+for u, v, score in edge_scores:
+    u_id = cantor_number(u)
+    u_loc = u * np.array(voxel_size) + np.array(voxel_size) / 2
+    v_id = cantor_number(v)
+    v_loc = v * np.array(voxel_size) + np.array(voxel_size) / 2
 
-        gt.add_node(u_id, location=u_loc)
-        gt.add_node(v_id, location=v_loc)
+    gt.add_node(u_id, location=u_loc)
+    gt.add_node(v_id, location=v_loc)
 
-        gt.add_edge(u_id, v_id, distance=score)
+    gt.add_edge(u_id, v_id, distance=score)
 
-    noisy_vol_2 = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
+noisy_vol_2 = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
+for p in ps:
     noisy_vol = p * noisy_vol + (1 - p) * noisy_vol_2
     neighborhood = generate_binary_structure(dims, dims)
     peaks = maximum_filter(noisy_vol, footprint=neighborhood) == noisy_vol
@@ -76,32 +78,49 @@ for i in range(num_graphs):
         prediction.add_edge(u_id, v_id, distance=score)
     graphs.append((gt, prediction))
 
-gt, prediction = graphs[0]
-config = OmegaConf.structured(ReconstructionConfig)
+for gt, prediction in graphs:
+    gt, prediction = graphs[0]
+    config = OmegaConf.structured(ReconstructionConfig)
+    config.comatch.match_threshold = 10
 
-reconstructions = []
-ccs = nx.connected_components(gt)
-ccs = sorted(ccs, key=lambda x: -len(x))
-for cc in ccs:
-    seed_node = min(cc)
-    seed_loc = gt.nodes[seed_node]["location"]
+    reconstructions = []
+    ccs = nx.connected_components(gt)
+    ccs = sorted(ccs, key=lambda x: -len(x))
+    for cc in ccs:
+        seed_node = min(cc)
+        seed_loc = gt.nodes[seed_node]["location"]
 
-    component_subgraph = gt.subgraph(cc).copy()
-    sim_tracer = SimulatedTracer(component_subgraph, prediction, seed_loc, config)
-    logging.info(f"Starting reconstruction")
-    sim_tracer.start()
-    logging.info(f"Finished reconstruction")
-    reconstructions.append(
-        sim_tracer.prediction.subgraph(sim_tracer.reconstruction_nodes).copy()
-    )
-    print(f"number of nodes in component: {component_subgraph.number_of_nodes()}")
-    print(f"number of nodes in prediction: {prediction.number_of_nodes()}")
-    logging.info(
-        f"Number of nodes in reconstruciton: {reconstructions[-1].number_of_nodes()}"
-    )
-    sim_tracer.accuracy.plot()
-    # plt.show()
-    break
+        component_subgraph = gt.subgraph(cc).copy()
+        sim_tracer = SimulatedTracer(component_subgraph, prediction, seed_loc, config)
+        logging.info(f"Starting reconstruction")
+        sim_tracer.start()
+        logging.info(f"Finished reconstruction")
+        reconstructions.append(
+            sim_tracer.prediction.subgraph(sim_tracer.reconstruction_nodes).copy()
+        )
+        print(f"number of nodes in component: {component_subgraph.number_of_nodes()}")
+        print(f"number of nodes in prediction: {prediction.number_of_nodes()}")
+        logging.info(
+            f"Number of nodes in reconstruciton: {reconstructions[-1].number_of_nodes()}"
+        )
+        # sim_tracer.accuracy.plot()
+        # plt.show()
+
+        # check_reconstruction_accuracy:
+        edit_dist, (fp, fn, merge, split) = score_graph(
+            reconstructions[-1],
+            component_subgraph,
+            config.comatch.match_threshold,
+            "location",
+            Metric.GRAPH_EDIT,
+            node_spacing=1,
+            details=True,
+        )
+        assert edit_dist == 0
+
+        sim_tracer.accuracy.plot()
+        plt.show()
+        break
 
 reconstruction = nx.disjoint_union_all(reconstructions)
 
