@@ -14,8 +14,8 @@ from neurolight_evaluation.graph_metrics import Metric
 from neurolight_evaluation.simulated_reconstruction import SimulatedTracer
 from neurolight_evaluation.conf import ReconstructionConfig
 
-from neuroglancer_graphs import add_graph
-import neuroglancer
+# from neuroglancer_graphs import add_graph
+# import neuroglancer
 
 from omegaconf import OmegaConf
 
@@ -35,12 +35,12 @@ graphs = []
 
 np.random.seed(random_seed)
 
-noisy_vol = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
+noisy_vol_1 = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
 neighborhood = generate_binary_structure(dims, dims)
-peaks = maximum_filter(noisy_vol, footprint=neighborhood) == noisy_vol
+peaks = maximum_filter(noisy_vol_1, footprint=neighborhood) == noisy_vol_1
 
 edge_scores = maximin_tree_query(
-    noisy_vol, peaks.astype(np.uint8), decimate=False, threshold=0.4
+    noisy_vol_1, peaks.astype(np.uint8), decimate=False, threshold=0.4
 )
 
 gt = nx.Graph()
@@ -57,7 +57,7 @@ for u, v, score in edge_scores:
 
 noisy_vol_2 = generate_fractal_noise_3d(volume_size, voxel_size, octaves=3,)
 for p in ps:
-    noisy_vol = p * noisy_vol + (1 - p) * noisy_vol_2
+    noisy_vol = p * noisy_vol_1 + (1 - p) * noisy_vol_2
     neighborhood = generate_binary_structure(dims, dims)
     peaks = maximum_filter(noisy_vol, footprint=neighborhood) == noisy_vol
 
@@ -79,7 +79,6 @@ for p in ps:
     graphs.append((gt, prediction))
 
 for gt, prediction in graphs:
-    gt, prediction = graphs[0]
     config = OmegaConf.structured(ReconstructionConfig)
     config.comatch.match_threshold = 10
 
@@ -101,7 +100,10 @@ for gt, prediction in graphs:
         print(f"number of nodes in component: {component_subgraph.number_of_nodes()}")
         print(f"number of nodes in prediction: {prediction.number_of_nodes()}")
         logging.info(
-            f"Number of nodes in reconstruciton: {reconstructions[-1].number_of_nodes()}"
+            f"Number of nodes in reconstruction: {reconstructions[-1].number_of_nodes()}"
+        )
+        logging.info(
+            f"Number of nodes visited: {len(sim_tracer.fixed_nodes)}"
         )
         # sim_tracer.accuracy.plot()
         # plt.show()
@@ -117,6 +119,7 @@ for gt, prediction in graphs:
             details=True,
         )
         assert edit_dist == 0
+        assert len(sim_tracer.fixed_nodes) >= reconstructions[-1].number_of_nodes(), f"simulated tracer only visited {len(sim_tracer.fixed_nodes)} of {reconstructions[-1].number_of_nodes()} nodes!"
 
         sim_tracer.accuracy.plot()
         plt.show()
@@ -127,27 +130,27 @@ reconstruction = nx.disjoint_union_all(reconstructions)
 logging.info(f"Number of nodes in reconstruction: {reconstruction.number_of_nodes()}")
 
 attrs = {"names": ["z", "y", "x"], "units": "nm", "scales": (1, 1, 1)}
-dimensions = neuroglancer.CoordinateSpace(**attrs)
-
-viewer = neuroglancer.Viewer()
-viewer.dimensions = dimensions
-with viewer.txn() as s:
-    for i, (gt, prediction) in enumerate(graphs):
-        add_graph(s, gt, name=f"gt_{i}", visible=True, graph_dimensions=dimensions)
-        add_graph(
-            s,
-            prediction,
-            name=f"prediction_{i}",
-            visible=True,
-            graph_dimensions=dimensions,
-        )
-        add_graph(
-            s,
-            reconstruction,
-            name="reconstruction_0",
-            visible=True,
-            graph_dimensions=dimensions,
-        )
-
-print(viewer)
+# dimensions = neuroglancer.CoordinateSpace(**attrs)
+# 
+# viewer = neuroglancer.Viewer()
+# viewer.dimensions = dimensions
+# with viewer.txn() as s:
+#     for i, (gt, prediction) in enumerate(graphs):
+#         add_graph(s, gt, name=f"gt_{i}", visible=True, graph_dimensions=dimensions)
+#         add_graph(
+#             s,
+#             prediction,
+#             name=f"prediction_{i}",
+#             visible=True,
+#             graph_dimensions=dimensions,
+#         )
+#         add_graph(
+#             s,
+#             reconstruction,
+#             name="reconstruction_0",
+#             visible=True,
+#             graph_dimensions=dimensions,
+#         )
+# 
+# print(viewer)
 input("Hit ENTER to close!")

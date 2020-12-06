@@ -10,6 +10,7 @@ import logging
 from typing import Set, Tuple, Dict
 import random
 from enum import Enum
+import pickle
 
 from .graph_matching.comatch.edges_xy import get_edges_xy
 from .conf import ReconstructionConfig
@@ -44,6 +45,11 @@ class Accuracy:
         self._false_neg = []
 
         self.total_gt = self.cable_len(gt)
+        self.gt = gt
+
+        self.reconstructions = []
+        self.pred_matchings = None
+        self.gt_matchings = None
 
     def plot(self):
         x = range(len(self.interactions))
@@ -68,6 +74,21 @@ class Accuracy:
         plt.xlabel("interactions")
         plt.ylabel("normalized scores")
 
+    def save(self, filename):
+        save_data = {
+            "precision": self.precision,
+            "recall": self.recall,
+            "merges": self.merges,
+            "splits": self.splits,
+            "fps": self.false_pos,
+            "fns": self.false_neg,
+            "graphs": self.reconstructions,
+            "pred_matchings": self.pred_matchings,
+            "gt_matchings": self.gt_matchings,
+            "gt": self.gt,
+        }
+        pickle.dump(save_data, open(filename, "wb"))
+
     def init(self):
         self.interactions.append(Interaction.INIT)
         self.precision.append(1)
@@ -89,6 +110,10 @@ class Accuracy:
     ):
         true_gt = self.cable_len(gt.subgraph(reconstructed_gt))
         total_pred = self.cable_len(pred.subgraph(reconstructed_pred))
+
+        self.reconstructions.append(pred.subgraph(reconstructed_pred).copy())
+        self.pred_matchings = pred_matchings
+        self.gt_matchings = gt_matchings
 
         matched_reconstruction_nodes = set(
             [n for n in reconstructed_pred if len(pred_matchings[n]) > 0]
@@ -279,14 +304,16 @@ class SimulatedTracer:
         self.roots = []
         for node in initial_nodes:
             self.roots.append(node)
-            heappush(self.visit_queue, (random.random(), node))
+            heappush(self.visit_queue, (0, node))
 
         self.accuracy.init()
 
     def start(self):
         # initialize matching:
+        logger.info("Matching graphs")
         self.match_graphs()
 
+        logger.info("initializing reconstruction")
         self.init_reconstruction()
 
         logger.warning(
@@ -300,6 +327,7 @@ class SimulatedTracer:
 
     def step(self):
         confidence, dp_pred = self.next_node()
+        self.fixed_nodes.add(dp_pred)
 
         # A single pred node can match to multiple gt nodes
         dps_gt = self.pred_matchings[dp_pred]
@@ -311,7 +339,6 @@ class SimulatedTracer:
             raise Exception("Should not be reachable!")
         else:
             self.review_connectivity(dp_pred, dps_gt)
-            self.fixed_nodes.add(dp_pred)
 
     def local_nodes(self, graph: nx.Graph, inside: Set[int]):
         """
@@ -334,7 +361,9 @@ class SimulatedTracer:
     @property
     def reconstructed_nodes(self):
         reconstructed = set(
-            itertools.chain(*[self.pred_matchings[n] for n in self.reconstruction_nodes])
+            itertools.chain(
+                *[self.pred_matchings[n] for n in self.reconstruction_nodes]
+            )
         )
         return reconstructed
 
@@ -348,6 +377,10 @@ class SimulatedTracer:
 
         local_pred = self.prediction.subgraph(local_pred)
         local_gt = self.gt.subgraph(local_gt)
+
+        logger.debug(
+            f"iterating over {local_pred.number_of_edges()} local prediction edges"
+        )
 
         for u, v in local_pred.edges():
             if not (u == dp_pred or v == dp_pred):
@@ -365,6 +398,8 @@ class SimulatedTracer:
                 self.remove_false_merge_edge(u, v)
             elif len(gt_ccs) > 2:
                 raise NotImplementedError("This should be unreachable!")
+
+        logger.debug(f"iterating over {local_gt.number_of_edges()} local gt edges")
 
         for g_u, g_v in local_gt.edges():
             assert g_u in dps_gt or g_v in dps_gt
@@ -396,7 +431,7 @@ class SimulatedTracer:
                 new_node_id, **{self.config.comatch.location_attr: new_loc}
             )
 
-            heappush(self.visit_queue, (random.random(), new_node_id))
+            heappush(self.visit_queue, (0, new_node_id))
 
             for gt_node in cc:
                 self.gt_matchings[gt_node].add(new_node_id)
@@ -474,7 +509,7 @@ class SimulatedTracer:
         self.pred_matchings[new_node_id].add(gt_neighbor)
         self.prediction.add_edge(last_node_id, new_node_id)
         # logger.warning("Update accuracy. Either stays same or increases accuracy")
-        heappush(self.visit_queue, (random.random(), new_node_id))
+        heappush(self.visit_queue, (0, new_node_id))
 
         self.update_accuracy(Interaction.RECONSTRUCT_FN)
 
@@ -508,17 +543,35 @@ class SimulatedTracer:
             u, v, _ = edges[0]
             edges = edges[1:]
             if v not in nx.node_connected_component(local_predictions, u):
+                self.prediction.add_edge(u, v)
+                total_cable_len = self.accuracy.cable_len(self.prediction)
                 if u not in reconstruction_nodes and v in reconstruction_nodes:
                     for node in nx.node_connected_component(self.prediction, u):
+                        cost = self.get_cost(self.prediction, node, total_cable_len)
                         heappush(self.visit_queue, (random.random(), node))
                 if v not in reconstruction_nodes and u in reconstruction_nodes:
                     for node in nx.node_connected_component(self.prediction, v):
+                        cost = self.get_cost(self.prediction, node, total_cable_len)
                         heappush(self.visit_queue, (random.random(), node))
-                self.prediction.add_edge(u, v)
             local_predictions = self.prediction.subgraph(matched_nodes)
             pred_ccs = list(nx.connected_components(local_predictions))
 
         self.update_accuracy(Interaction.MERGE_FS)
+
+    def distance_to_root(self, graph, node):
+        root = self.roots[0]
+
+        path = nx.algorithms.shortest_paths.generic.shortest_path(
+            graph, source=node, target=root
+        )
+        return self.accuracy.cable_len(graph.subgraph(path))
+
+    def get_cost(self, graph, node, total_pred_cable_len):
+        edges = list(nx.boundary.edge_boundary(graph, set([node]), data=True))
+        if len(edges) != 2:
+            return self.distance_to_root(graph, node) / total_pred_cable_len
+        else:
+            return min([attrs.get("distance", 1) for _, _, attrs in edges])
 
     def edge_len(self, graph, a, b):
         loc_a = graph.nodes[a][self.config.comatch.location_attr]
