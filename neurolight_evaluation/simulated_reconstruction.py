@@ -26,6 +26,7 @@ class Interaction(Enum):
     REMOVE_FM = 3
     RECONSTRUCT_FN = 4
     MERGE_FS = 5
+    VISIT = 6
 
 
 class Accuracy:
@@ -33,7 +34,7 @@ class Accuracy:
     A class to keep track of prediction accuracy
     """
 
-    def __init__(self, gt: nx.Graph, location_attr: str = "location"):
+    def __init__(self, gt: nx.Graph, location_attr: str = "location", prediction=None):
         self.location_attr = location_attr
 
         self._interactions = []
@@ -46,6 +47,7 @@ class Accuracy:
 
         self.total_gt = self.cable_len(gt)
         self.gt = gt
+        self.prediction = prediction
 
         self.reconstructions = []
         self.pred_matchings = None
@@ -56,19 +58,19 @@ class Accuracy:
         # plt.plot(x, self.interactions)
         plt.plot(x, np.array(self.precision))
         plt.plot(x, np.array(self.recall))
-        plt.plot(x, np.array(self.merges) / max(self.merges))
-        plt.plot(x, np.array(self.splits) / max(self.splits))
-        plt.plot(x, np.array(self.false_pos) / max(self.false_pos))
-        plt.plot(x, np.array(self.false_neg) / self.total_gt)
+        # plt.plot(x, np.array(self.merges) / max(self.merges))
+        # plt.plot(x, np.array(self.splits) / max(self.splits))
+        # plt.plot(x, np.array(self.false_pos) / max(self.false_pos))
+        # plt.plot(x, np.array(self.false_neg) / self.total_gt)
         plt.legend(
             [
                 # "interactions",
                 "precision",
                 "recall",
-                "merges",
-                "splits",
-                "false_pos",
-                "false_neg",
+                # "merges",
+                # "splits",
+                # "false_pos",
+                # "false_neg",
             ]
         )
         plt.xlabel("interactions")
@@ -76,6 +78,7 @@ class Accuracy:
 
     def save(self, filename):
         save_data = {
+            "interactions": self.interactions,
             "precision": self.precision,
             "recall": self.recall,
             "merges": self.merges,
@@ -86,6 +89,7 @@ class Accuracy:
             "pred_matchings": self.pred_matchings,
             "gt_matchings": self.gt_matchings,
             "gt": self.gt,
+            "prediction": self.prediction,
         }
         pickle.dump(save_data, open(filename, "wb"))
 
@@ -97,6 +101,16 @@ class Accuracy:
         self.splits.append(0)
         self.false_pos.append(0)
         self.false_neg.append(self.total_gt)
+
+    def visit(self):
+
+        self.interactions.append(self.interactions[-1])
+        self.precision.append(self.precision[-1])
+        self.recall.append(self.recall[-1])
+        self.splits.append(self.splits[-1])
+        self.merges.append(self.merges[-1])
+        self.false_pos.append(self.false_pos[-1])
+        self.false_neg.append(self.false_neg[-1])
 
     def update(
         self,
@@ -203,7 +217,7 @@ class SimulatedTracer:
         # track progress
         self.visit_queue = list()
 
-        self.accuracy = Accuracy(gt)
+        self.accuracy = Accuracy(gt.copy(), prediction=prediction.copy())
 
         self.steps = 0
 
@@ -283,10 +297,35 @@ class SimulatedTracer:
             self.pred_matchings[pred_node].add(gt_node)
             self.gt_matchings[gt_node].add(pred_node)
 
+        # cleanup matchings:
+        # a node in pred that matches to a gt component, will match to all
+        # nodes in gt within a radius threshold.
+        # This is unnecessary. It should only match to gt nodes that can't be
+        # matched elsewhere
+        # for pred_node, attrs in self.prediction.nodes.items():
+        #     gt_matchings = list(self.pred_matchings[pred_node])
+        #     pred_loc = attrs["location"]
+        #     gt_locs = [self.gt.nodes[gt_node]["location"] for gt_node in gt_matchings]
+        #     gt_matchings = [
+        #         x[0]
+        #         for x in sorted(list(zip(gt_matchings, gt_locs)), key=lambda x: np.linalg.norm(pred_loc - x[1]))
+        #     ]
+        #     remaining_matches = []
+        #     for gt_node in gt_matchings:
+        #         pred_matchings = self.gt_matchings[gt_node]
+        #         if len(pred_matchings) < 2 or len(remaining_matches) < 1:
+        #             remaining_matches.append(gt_node)
+        #         else:
+        #             self.gt_matchings[gt_node].remove(pred_node)
+        #             self.pred_matchings[pred_node].remove(gt_node)
+
+        num_nodes = self.prediction.number_of_nodes()
         for pred_node, gt_nodes in list(self.pred_matchings.items()):
             gt_subgraph = self.gt.subgraph(gt_nodes)
             if len(list(nx.connected_components(gt_subgraph))) > 1:
                 self.split_node(pred_node, gt_nodes)
+        num_split = self.prediction.number_of_nodes() - num_nodes
+        print(f"Split {num_split} nodes!")
 
     def init_reconstruction(self):
         gt_root = self.closest_node(self.gt, self.seed)
@@ -328,6 +367,7 @@ class SimulatedTracer:
     def step(self):
         confidence, dp_pred = self.next_node()
         self.fixed_nodes.add(dp_pred)
+        self.update_accuracy(Interaction.VISIT)
 
         # A single pred node can match to multiple gt nodes
         dps_gt = self.pred_matchings[dp_pred]
@@ -382,7 +422,7 @@ class SimulatedTracer:
             f"iterating over {local_pred.number_of_edges()} local prediction edges"
         )
 
-        for u, v in local_pred.edges():
+        for u, v in list(local_pred.edges()):
             if not (u == dp_pred or v == dp_pred):
                 # only consider edges adjacent to decision point
                 continue
@@ -548,11 +588,11 @@ class SimulatedTracer:
                 if u not in reconstruction_nodes and v in reconstruction_nodes:
                     for node in nx.node_connected_component(self.prediction, u):
                         cost = self.get_cost(self.prediction, node, total_cable_len)
-                        heappush(self.visit_queue, (random.random(), node))
+                        heappush(self.visit_queue, (cost, node))
                 if v not in reconstruction_nodes and u in reconstruction_nodes:
                     for node in nx.node_connected_component(self.prediction, v):
                         cost = self.get_cost(self.prediction, node, total_cable_len)
-                        heappush(self.visit_queue, (random.random(), node))
+                        heappush(self.visit_queue, (cost, node))
             local_predictions = self.prediction.subgraph(matched_nodes)
             pred_ccs = list(nx.connected_components(local_predictions))
 
@@ -571,7 +611,7 @@ class SimulatedTracer:
         if len(edges) != 2:
             return self.distance_to_root(graph, node) / total_pred_cable_len
         else:
-            return min([attrs.get("distance", 1) for _, _, attrs in edges])
+            return 1 + min([attrs.get("distance", 1) for _, _, attrs in edges])
 
     def edge_len(self, graph, a, b):
         loc_a = graph.nodes[a][self.config.comatch.location_attr]
@@ -579,15 +619,18 @@ class SimulatedTracer:
         return np.linalg.norm(loc_a - loc_b)
 
     def update_accuracy(self, interaction):
-        self.accuracy.update(
-            interaction,
-            self.prediction,
-            self.gt,
-            self.reconstruction_nodes,
-            self.reconstructed_nodes,
-            self.pred_matchings,
-            self.gt_matchings,
-        )
+        if interaction == Interaction.VISIT:
+            self.accuracy.visit()
+        else:
+            self.accuracy.update(
+                interaction,
+                self.prediction,
+                self.gt,
+                self.reconstruction_nodes,
+                self.reconstructed_nodes,
+                self.pred_matchings,
+                self.gt_matchings,
+            )
 
 
 """
